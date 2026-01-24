@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>香貓阅卷</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h2 class="title">香貓阅卷</h2>
+    <div class="step">
+      <div class="platform-selector">
+        <button id="platform-zxw" class="platform-btn">智学网</button>
+        <button id="platform-dnjy" class="platform-btn">懂你教育</button>
+      </div>
+    </div>
+    <div class="step">
+      <button id="select-area" class="main-btn">1. 选择阅卷区域</button>
+      <span id="area-status" class="status"></span>
+    </div>
+    <div class="step">
+      <input id="prompt" class="input" placeholder="请输入评分提示词，如：请根据标准答案给分并说明理由" />
+    </div>
+    <div class="step">
+      <button id="start-review" class="main-btn">2. 开始阅卷</button>
+      <button id="stop-review" class="main-btn">3. 停止阅卷</button>
+    </div>
+    <div id="result" class="result"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html> 
