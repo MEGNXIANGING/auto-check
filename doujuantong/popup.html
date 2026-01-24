@@ -2,31 +2,102 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>香貓阅卷</title>
+  <title>香猫阅卷</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
-    <h2 class="title">香貓阅卷</h2>
-    <div class="step">
-      <div class="platform-selector">
-        <button id="platform-zxw" class="platform-btn">智学网</button>
-        <button id="platform-dnjy" class="platform-btn">懂你教育</button>
+    <!-- 标题栏 -->
+    <div class="header">
+      <h2 class="title">香猫阅卷</h2>
+      <span id="status-indicator" class="status-indicator">○ 已停止</span>
+    </div>
+    
+    <!-- 平台选择（可折叠） -->
+    <div class="collapsible-section">
+      <div class="collapsible-header" id="platform-header">
+        <span class="collapsible-title">
+          <span class="arrow">▶</span>
+          平台: <span id="current-platform-text">懂你教育</span>
+        </span>
+        <span class="collapsible-hint">点击切换</span>
+      </div>
+      <div class="collapsible-content" id="platform-content">
+        <div class="platform-selector">
+          <button id="platform-zxw" class="platform-btn">智学网</button>
+          <button id="platform-dnjy" class="platform-btn active">懂你教育</button>
+        </div>
       </div>
     </div>
-    <div class="step">
-      <button id="select-area" class="main-btn">1. 选择阅卷区域</button>
-      <span id="area-status" class="status"></span>
+    
+    <!-- 区域选择 -->
+    <div class="section">
+      <div class="row">
+        <button id="select-area" class="main-btn">1. 选择阅卷区域</button>
+        <span id="area-status" class="status">未选择区域</span>
+      </div>
     </div>
-    <div class="step">
-      <input id="prompt" class="input" placeholder="请输入评分提示词，如：请根据标准答案给分并说明理由" />
+    
+    <!-- 提示词输入 -->
+    <div class="section">
+      <label class="section-label">评分提示词</label>
+      <textarea id="prompt" class="input-area" rows="2" placeholder="请输入评分提示词，如：正确答案为"人生观"，完全匹配得1分，否则得0分"></textarea>
     </div>
-    <div class="step">
-      <button id="start-review" class="main-btn">2. 开始阅卷</button>
-      <button id="stop-review" class="main-btn">3. 停止阅卷</button>
+    
+    <!-- 操作按钮 -->
+    <div class="section">
+      <div class="button-group">
+        <button id="single-review" class="action-btn secondary">单次阅卷</button>
+        <button id="start-review" class="action-btn primary">开始自动阅卷</button>
+        <button id="stop-review" class="action-btn danger" disabled>停止</button>
+      </div>
     </div>
-    <div id="result" class="result"></div>
+    
+    <!-- 阅卷统计 -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-label">本次已阅</span>
+        <span id="review-count" class="stat-value">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">当前状态</span>
+        <span id="current-status" class="stat-value status-text">等待开始</span>
+      </div>
+      <div class="stat-item export-item">
+        <button id="export-btn" class="export-btn" title="导出阅卷记录">
+          <span class="export-icon">📥</span>
+          <span>导出</span>
+        </button>
+      </div>
+    </div>
+    
+    <!-- AI评分结果（可折叠，默认展开） -->
+    <div class="collapsible-section expanded">
+      <div class="collapsible-header" id="ai-result-header">
+        <span class="collapsible-title">
+          <span class="arrow">▼</span>
+          AI评分结果
+        </span>
+        <span id="last-score" class="score-badge">--</span>
+      </div>
+      <div class="collapsible-content show" id="ai-result-content">
+        <div id="ai-result" class="ai-result-box">等待阅卷...</div>
+      </div>
+    </div>
+    
+    <!-- 操作日志（可折叠） -->
+    <div class="collapsible-section">
+      <div class="collapsible-header" id="log-header">
+        <span class="collapsible-title">
+          <span class="arrow">▶</span>
+          操作日志
+        </span>
+      </div>
+      <div class="collapsible-content" id="log-content">
+        <div id="result" class="result">等待操作...</div>
+      </div>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
-</html> 
+</html>

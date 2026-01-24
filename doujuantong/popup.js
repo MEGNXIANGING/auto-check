@@ -1,173 +1,218 @@
-// 智能改卷插件 - 全面重构版本
-// 功能：自动识别学生答题内容并评分，支持批量改卷
+// popup.js - 负责UI交互和配置管理
 
-// 全局变量
-let selectBtn, startBtn, stopBtn, promptInput, resultDiv, areaStatus, platformZxwBtn, platformDnjyBtn;
+// ============ DOM元素 ============
+let platformZxwBtn, platformDnjyBtn, currentPlatformText;
+let selectBtn, startBtn, stopBtn, singleBtn, exportBtn;
+let promptInput, resultDiv, areaStatus, statusIndicator;
+let aiResultDiv, lastScoreBadge, reviewCountSpan, currentStatusSpan;
+
+// ============ 状态 ============
+let currentPlatform = 'dnjy'; // 默认懂你教育
 let selectedArea = null;
-let currentPlatform = 'zxw'; // 默认智学网
+let isReviewing = false;
+let reviewCount = 0;
 
-// 自动阅卷控制
-let autoReviewActive = false;
+// ============ 日志函数 ============
+function log(...args) {
+  console.log('[香猫阅卷-Popup]', ...args);
+}
 
-// 定时器管理
-const timers = new Set();
+function logError(...args) {
+  console.error('[香猫阅卷-Popup]', ...args);
+}
 
-// 截图节流控制
-let lastCaptureTime = 0;
-const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
-
-// 题目配置
-const questionConfigs = [
-  {
-    id: 1,
-    type: 'fill',
-    answer: '人生观',
-    prompt: '对图片中的学生答题内容进行识别与评分，核心评分规则：正确答案为 "人生观"，答案完全匹配则得 1 分，不匹配（含错别字、多字、少字、其他答案）均得 0 分。'
-  },
-  {
-    id: 2,
-    type: 'fill',
-    answer: '价值观',
-    prompt: '对图片中的学生答题内容进行识别与评分，核心评分规则：正确答案为 "价值观"，答案完全匹配则得 1 分，不匹配（含错别字、多字、少字、其他答案）均得 0 分。'
-  },
-  {
-    id: 3,
-    type: 'fill',
-    answer: '世界观',
-    prompt: '对图片中的学生答题内容进行识别与评分，核心评分规则：正确答案为 "世界观"，答案完全匹配则得 1 分，不匹配（含错别字、多字、少字、其他答案）均得 0 分。'
-  },
-  {
-    id: 4,
-    type: 'choice',
-    answer: 'B',
-    prompt: '对图片中的学生答题内容进行识别与评分，核心评分规则：正确选项为 "B"，选择 B 得 2 分，否则得 0 分。'
-  },
-  {
-    id: 5,
-    type: 'choice',
-    answer: 'C',
-    prompt: '对图片中的学生答题内容进行识别与评分，核心评分规则：正确选项为 "C"，选择 C 得 2 分，否则得 0 分。'
-  }
-];
-
-let currentQuestionIndex = 0;
-
-// 初始化
-window.addEventListener('DOMContentLoaded', () => {
-  console.log('智能改卷插件初始化...');
+// ============ 初始化 ============
+document.addEventListener('DOMContentLoaded', () => {
+  log('Popup 初始化...');
   
   // 获取DOM元素
+  platformZxwBtn = document.getElementById('platform-zxw');
+  platformDnjyBtn = document.getElementById('platform-dnjy');
+  currentPlatformText = document.getElementById('current-platform-text');
   selectBtn = document.getElementById('select-area');
   startBtn = document.getElementById('start-review');
   stopBtn = document.getElementById('stop-review');
+  singleBtn = document.getElementById('single-review');
   promptInput = document.getElementById('prompt');
   resultDiv = document.getElementById('result');
   areaStatus = document.getElementById('area-status');
-  platformZxwBtn = document.getElementById('platform-zxw');
-  platformDnjyBtn = document.getElementById('platform-dnjy');
+  statusIndicator = document.getElementById('status-indicator');
+  aiResultDiv = document.getElementById('ai-result');
+  lastScoreBadge = document.getElementById('last-score');
+  reviewCountSpan = document.getElementById('review-count');
+  currentStatusSpan = document.getElementById('current-status');
+  exportBtn = document.getElementById('export-btn');
   
   // 绑定事件
   bindEvents();
   
+  // 初始化折叠面板
+  initCollapsibles();
+  
   // 加载配置
   loadConfig();
+  
+  // 获取当前阅卷状态
+  getReviewStatus();
 });
 
-// 绑定事件
-function bindEvents() {
-  console.log('绑定事件...');
+// ============ 折叠面板 ============
+function initCollapsibles() {
+  // 平台选择折叠
+  const platformHeader = document.getElementById('platform-header');
+  const platformContent = document.getElementById('platform-content');
+  const platformSection = platformHeader?.parentElement;
   
-  // 平台选择按钮
-  if (platformZxwBtn) {
-    platformZxwBtn.addEventListener('click', () => {
-      currentPlatform = 'zxw';
-      chrome.storage.local.set({ currentPlatform });
-      updatePlatformButtons();
-      console.log('切换到智学网平台');
-    });
-  }
+  platformHeader?.addEventListener('click', () => {
+    platformSection?.classList.toggle('expanded');
+    platformContent?.classList.toggle('show');
+  });
   
-  if (platformDnjyBtn) {
-    platformDnjyBtn.addEventListener('click', () => {
-      currentPlatform = 'dnjy';
-      chrome.storage.local.set({ currentPlatform });
-      updatePlatformButtons();
-      console.log('切换到懂你教育平台');
-    });
-  }
+  // AI结果折叠
+  const aiResultHeader = document.getElementById('ai-result-header');
+  const aiResultContent = document.getElementById('ai-result-content');
+  const aiResultSection = aiResultHeader?.parentElement;
   
-  // 选择区域按钮
-  if (selectBtn) {
-    selectBtn.addEventListener('click', selectArea);
-  }
+  aiResultHeader?.addEventListener('click', () => {
+    aiResultSection?.classList.toggle('expanded');
+    aiResultContent?.classList.toggle('show');
+  });
   
-  // 开始阅卷按钮
-  if (startBtn) {
-    startBtn.addEventListener('click', startReview);
-  }
+  // 日志折叠
+  const logHeader = document.getElementById('log-header');
+  const logContent = document.getElementById('log-content');
+  const logSection = logHeader?.parentElement;
   
-  // 停止阅卷按钮
-  if (stopBtn) {
-    stopBtn.addEventListener('click', stopReview);
-  }
-  
-  // 提示词输入框
-  if (promptInput) {
-    promptInput.addEventListener('input', (e) => {
-      chrome.storage.local.set({lastPrompt: e.target.value});
-      console.log('提示词已更新');
-    });
-  }
+  logHeader?.addEventListener('click', () => {
+    logSection?.classList.toggle('expanded');
+    logContent?.classList.toggle('show');
+  });
 }
 
-// 加载配置
-function loadConfig() {
-  console.log('加载配置...');
+// ============ 事件绑定 ============
+function bindEvents() {
+  // 平台选择
+  if (platformZxwBtn) {
+    platformZxwBtn.addEventListener('click', () => selectPlatform('zxw'));
+  }
+  if (platformDnjyBtn) {
+    platformDnjyBtn.addEventListener('click', () => selectPlatform('dnjy'));
+  }
   
-  chrome.storage.local.get(['selectedArea', 'lastPrompt', 'currentPlatform'], (data) => {
+  // 选择区域
+  if (selectBtn) {
+    selectBtn.addEventListener('click', onSelectArea);
+  }
+  
+  // 开始阅卷
+  if (startBtn) {
+    startBtn.addEventListener('click', onStartReview);
+  }
+  
+  // 停止阅卷
+  if (stopBtn) {
+    stopBtn.addEventListener('click', onStopReview);
+  }
+  
+  // 单次阅卷
+  if (singleBtn) {
+    singleBtn.addEventListener('click', onSingleReview);
+  }
+  
+  // 提示词变化
+  if (promptInput) {
+    promptInput.addEventListener('input', (e) => {
+      chrome.storage.local.set({ lastPrompt: e.target.value });
+    });
+  }
+  
+  // 导出按钮
+  if (exportBtn) {
+    exportBtn.addEventListener('click', onExportRecords);
+  }
+  
+  // 监听状态更新
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === 'status_update') {
+      updateCurrentStatus(msg.message);
+      appendLog(msg.message);
+    }
+    if (msg.action === 'ai_result') {
+      updateAIResult(msg.result, msg.score);
+      // 使用服务端的计数
+      if (msg.totalCount !== undefined) {
+        reviewCount = msg.totalCount;
+      } else {
+        reviewCount++;
+      }
+      updateReviewCount();
+    }
+  });
+}
+
+// ============ 配置加载 ============
+function loadConfig() {
+  chrome.storage.local.get(['selectedArea', 'lastPrompt', 'currentPlatform', 'reviewRecords', 'lastAIResult'], (data) => {
+    log('加载配置:', data);
+    
     // 加载选择区域
     if (data.selectedArea) {
       selectedArea = data.selectedArea;
-      if (areaStatus) {
-        areaStatus.textContent = '✔ 区域已选择';
-        areaStatus.style.color = '#28a745';
-      }
-      if (selectBtn) {
-        selectBtn.textContent = '重新选择区域';
-      }
-      console.log('加载选择区域:', data.selectedArea);
+      updateAreaStatus(true);
     } else {
       selectedArea = null;
-      if (areaStatus) {
-        areaStatus.textContent = '';
-      }
-      if (selectBtn) {
-        selectBtn.textContent = '1. 选择阅卷区域';
-      }
-      console.log('未找到选择区域');
+      updateAreaStatus(false);
     }
     
     // 加载提示词
     if (data.lastPrompt && promptInput) {
       promptInput.value = data.lastPrompt;
-      console.log('加载上次提示词:', data.lastPrompt);
     } else if (promptInput) {
-      // 设置默认提示词
-      const defaultPrompt = '对图片中的学生答题内容进行识别与评分，核心评分规则：正确答案为 "人生观"，答案完全匹配则得 1 分，不匹配（含错别字、多字、少字、其他答案）均得 0 分。';
-      promptInput.value = defaultPrompt;
-      console.log('使用默认提示词');
+      // 默认提示词
+      promptInput.value = '对图片中的学生答题内容进行识别与评分，核心评分规则：正确答案为 "人生观"，答案完全匹配则得 1 分，不匹配（含错别字、多字、少字、其他答案）均得 0 分。';
     }
     
-    // 加载平台选择
+    // 加载平台
     if (data.currentPlatform) {
       currentPlatform = data.currentPlatform;
-      updatePlatformButtons();
-      console.log('加载平台选择:', currentPlatform);
+    }
+    updatePlatformButtons();
+    
+    // 从background获取当前记录数
+    chrome.runtime.sendMessage({ action: 'get_records' }, (response) => {
+      if (response && response.count !== undefined) {
+        reviewCount = response.count;
+        updateReviewCount();
+      }
+    });
+    
+    // 加载上次AI结果
+    if (data.lastAIResult) {
+      updateAIResult(data.lastAIResult.result, data.lastAIResult.score);
     }
   });
 }
 
-// 更新平台按钮状态
+// ============ 平台选择 ============
+function selectPlatform(platform) {
+  currentPlatform = platform;
+  chrome.storage.local.set({ currentPlatform });
+  updatePlatformButtons();
+  log('切换平台:', platform);
+  
+  // 通知background更新平台
+  chrome.runtime.sendMessage({
+    action: 'update_config',
+    platform: platform
+  });
+  
+  // 选择后自动折叠
+  const platformSection = document.getElementById('platform-header')?.parentElement;
+  const platformContent = document.getElementById('platform-content');
+  platformSection?.classList.remove('expanded');
+  platformContent?.classList.remove('show');
+}
+
 function updatePlatformButtons() {
   if (platformZxwBtn) {
     platformZxwBtn.classList.toggle('active', currentPlatform === 'zxw');
@@ -175,610 +220,430 @@ function updatePlatformButtons() {
   if (platformDnjyBtn) {
     platformDnjyBtn.classList.toggle('active', currentPlatform === 'dnjy');
   }
+  
+  // 更新显示文本
+  if (currentPlatformText) {
+    currentPlatformText.textContent = currentPlatform === 'zxw' ? '智学网' : '懂你教育';
+  }
 }
 
-// 选择区域
-function selectArea() {
-  console.log('选择阅卷区域...');
-  
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    if (tabs && tabs.length > 0) {
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'select_area'}, () => {
-        setTimeout(() => {
-          console.log('区域选择完成，刷新状态...');
-          loadConfig();
-        }, 400);
-      });
+// ============ 区域状态 ============
+function updateAreaStatus(hasArea) {
+  if (areaStatus) {
+    if (hasArea) {
+      areaStatus.textContent = '✓ 已选择';
+      areaStatus.className = 'status success';
     } else {
-      console.error('没有找到活动标签页');
-      if (resultDiv) {
-        resultDiv.textContent = '没有找到活动标签页';
-      }
+      areaStatus.textContent = '未选择';
+      areaStatus.className = 'status';
     }
-  });
-}
-
-// 添加定时器
-function addTimer(callback, delay) {
-  const timer = setTimeout(() => {
-    timers.delete(timer);
-    callback();
-  }, delay);
-  timers.add(timer);
-  return timer;
-}
-
-// 清除所有定时器
-function clearAllTimers() {
-  console.log('清除所有定时器...');
-  timers.forEach(timer => clearTimeout(timer));
-  timers.clear();
-}
-
-// 检查是否可以截图
-function canCapture() {
-  const now = Date.now();
-  if (now - lastCaptureTime < MIN_CAPTURE_INTERVAL) {
-    console.log('截图过于频繁，等待最小间隔...');
-    return false;
   }
-  lastCaptureTime = now;
-  return true;
-}
-
-// 停止阅卷
-function stopReview() {
-  console.log('停止阅卷...');
-  
-  // 清除所有定时器
-  clearAllTimers();
-  
-  // 停止自动阅卷
-  autoReviewActive = false;
-  
-  // 显示停止信息
-  if (resultDiv) {
-    resultDiv.textContent = '阅卷已停止';
-  }
-  
-  // 重置截图节流状态
-  lastCaptureTime = 0;
-  
-  console.log('阅卷已成功停止');
-}
-
-// 裁剪图片
-function cropImage(dataUrl, area) {
-  return new Promise((resolve, reject) => {
-    try {
-      const img = new Image();
-      img.onload = function() {
-        try {
-          const scale = window.devicePixelRatio || 1;
-          const canvas = document.createElement('canvas');
-          canvas.width = area.w * scale;
-          canvas.height = area.h * scale;
-          const ctx = canvas.getContext('2d');
-          
-          ctx.drawImage(
-            img,
-            area.x * scale,
-            area.y * scale,
-            area.w * scale,
-            area.h * scale,
-            0, 0,
-            area.w * scale,
-            area.h * scale
-          );
-          
-          resolve(canvas.toDataURL('image/png'));
-        } catch (error) {
-          console.error('裁剪图片失败:', error);
-          reject(error);
-        }
-      };
-      
-      img.onerror = function() {
-        console.error('加载图片失败');
-        reject(new Error('加载图片失败'));
-      };
-      
-      img.src = dataUrl;
-    } catch (error) {
-      console.error('裁剪图片初始化失败:', error);
-      reject(error);
-    }
-  });
-}
-
-// 调用豆包API进行评分
-async function callDoubaoAPI(prompt, imageUrl) {
-  try {
-    console.log('调用豆包API进行评分...');
-    
-    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer fe53fa2f-888e-46ca-b316-0f26a9d6c217'
-      },
-      body: JSON.stringify({
-        model: 'doubao-seed-1-6-250615',
-        messages: [
-          {
-            content: [
-              { text: prompt, type: 'text' },
-              { image_url: { url: imageUrl }, type: 'image_url' }
-            ],
-            role: 'user'
-          }
-        ]
-      })
-    });
-    
-    const result = await response.json();
-    console.log('豆包API返回结果:', result);
-    return result;
-  } catch (error) {
-    console.error('调用豆包API失败:', error);
-    return null;
+  if (selectBtn) {
+    selectBtn.textContent = hasArea ? '重新选择区域' : '1. 选择阅卷区域';
   }
 }
 
-// 从AI响应中提取分数
-function extractScore(text) {
-  const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*分?/);
-  if (match) {
-    const score = match[1];
-    console.log('提取到分数:', score);
-    return score;
-  }
-  console.error('无法从响应中提取分数:', text);
-  return null;
-}
-
-// 执行填分和提交操作
-function executeFillScoreAndSubmit(score, tabId) {
-  console.log('执行填分和提交操作，分数:', score);
-  
-  // 检查自动阅卷状态
-  if (!autoReviewActive) {
-    console.log('自动阅卷已停止，跳过提交操作');
-    return;
-  }
+// ============ 选择区域 ============
+async function onSelectArea() {
+  log('开始选择区域...');
+  updateCurrentStatus('请在页面上选择区域...');
   
   try {
-    // 定义要在页面中执行的函数
-    function fillScoreAndSubmitOnPage(score) {
-      console.log('在页面中执行填分和提交操作，分数:', score);
-      
-      // 1. 找到分数输入框
-      const input = document.querySelector('input.el-input__inner[placeholder="得分"]');
-      if (input) {
-        input.value = score;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('填充分数输入框:', score);
-      } else {
-        console.error('未找到分数输入框');
-      }
-      
-      // 2. 找到提交按钮并点击
-      console.log('寻找提交按钮...');
-      
-      // 尝试多种选择器
-      let btn = null;
-      
-      // 选择器1: 精确选择器
-      btn = document.querySelector('button.el-button.el-button--primary.el-button--small');
-      if (!btn) {
-        // 选择器2: 宽松选择器
-        btn = document.querySelector('button.el-button.el-button--primary');
-      }
-      if (!btn) {
-        // 选择器3: 基于文本内容
-        const allButtons = Array.from(document.querySelectorAll('button'));
-        btn = allButtons.find(button => 
-          button.textContent.includes('提交') || 
-          button.textContent.includes('确定') || 
-          button.textContent.includes('保存')
-        );
-      }
-      
-      if (btn) {
-        console.log('找到提交按钮:', btn.textContent);
-        
-        // 检查按钮状态
-        const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-        console.log('按钮是否可见:', isVisible);
-        
-        const isDisabled = btn.disabled || btn.hasAttribute('disabled');
-        console.log('按钮是否禁用:', isDisabled);
-        
-        // 启用禁用的按钮
-        if (isDisabled) {
-          btn.disabled = false;
-          btn.removeAttribute('disabled');
-          console.log('已启用禁用的按钮');
-        }
-        
-        // 模拟点击事件
-        const clickEvent = new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          view: window
-        });
-        btn.dispatchEvent(clickEvent);
-        
-        // 直接调用click方法
-        btn.click();
-        
-        console.log('点击提交按钮');
-      } else {
-        console.error('未找到提交按钮');
-        // 列出所有按钮供调试
-        const allButtons = document.querySelectorAll('button');
-        console.log('页面上的所有按钮:', allButtons.length);
-        allButtons.forEach((button, index) => {
-          console.log(`按钮 ${index}:`, button.textContent, button.className);
-        });
-      }
+    // 获取当前标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      updateCurrentStatus('错误: 未找到活动标签页');
+      return;
     }
     
-    // 执行脚本
-    chrome.scripting.executeScript({
-      target: {tabId: tabId},
-      function: fillScoreAndSubmitOnPage,
-      args: [score]
-    }, () => {
+    // 发送选择区域消息
+    chrome.tabs.sendMessage(tab.id, { action: 'select_area' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error('执行脚本失败:', chrome.runtime.lastError);
+        logError('发送消息失败:', chrome.runtime.lastError);
+        updateCurrentStatus('请刷新页面后重试');
         return;
       }
       
-      console.log('脚本执行成功');
-      
-      // 提交后等待2秒，然后点击下一份
-      if (autoReviewActive) {
-        addTimer(() => {
-          if (!autoReviewActive) return;
-          
-          console.log('点击下一份按钮...');
-          
-          try {
-            chrome.scripting.executeScript({
-              target: {tabId: tabId},
-              function: () => {
-                // 找到下一份按钮
-                const nextButtons = Array.from(document.querySelectorAll('button')).filter(btn => 
-                  btn.textContent.includes('下一份') || btn.textContent.includes('下一个')
-                );
-                if (nextButtons.length > 0) {
-                  const nextBtn = nextButtons[0];
-                  console.log('找到下一份按钮:', nextBtn);
-                  nextBtn.click();
-                  console.log('点击下一份按钮');
-                } else {
-                  console.error('未找到下一份按钮');
-                }
-              }
-            }, () => {
-              if (chrome.runtime.lastError) {
-                console.error('点击下一份按钮失败:', chrome.runtime.lastError);
-                return;
-              }
-              
-              console.log('下一份按钮点击成功');
-              
-              // 等待1秒后开始下一题
-              if (autoReviewActive) {
-                addTimer(() => {
-                  if (!autoReviewActive) return;
-                  
-                  // 切换到下一题
-                  currentQuestionIndex = (currentQuestionIndex + 1) % questionConfigs.length;
-                  console.log('切换到下一题:', currentQuestionIndex + 1);
-                  
-                  // 再次开始阅卷
-                  startReview();
-                }, 1000);
-              }
-            });
-          } catch (error) {
-            console.error('点击下一份按钮时出错:', error);
-            
-            // 出错时直接切换到下一题
-            if (autoReviewActive) {
-              currentQuestionIndex = (currentQuestionIndex + 1) % questionConfigs.length;
-              console.log('出错，直接切换到下一题:', currentQuestionIndex + 1);
-              startReview();
-            }
-          }
-        }, 2000);
+      if (response && response.success) {
+        selectedArea = response.area;
+        updateAreaStatus(true);
+        updateCurrentStatus('区域选择成功');
+        log('区域选择完成:', response.area);
+      } else {
+        updateCurrentStatus(response?.error || '已取消');
       }
     });
+    
   } catch (error) {
-    console.error('执行填分和提交操作时出错:', error);
+    logError('选择区域出错:', error);
+    updateCurrentStatus('错误: ' + error.message);
   }
 }
 
-// 开始阅卷
-function startReview() {
-  console.log('开始阅卷...');
+// ============ 开始阅卷 ============
+async function onStartReview() {
+  log('开始阅卷...');
   
-  // 检查自动阅卷状态
-  if (!autoReviewActive) {
-    console.log('自动阅卷已停止，退出...');
-    return;
-  }
-  
-  // 检查是否选择了区域
+  // 检查配置
   if (!selectedArea) {
-    console.error('未选择阅卷区域');
-    if (resultDiv) {
-      resultDiv.textContent = '请先选择阅卷区域';
-    }
+    updateCurrentStatus('请先选择阅卷区域');
     return;
   }
   
-  // 获取当前题目配置
-  const currentConfig = questionConfigs[currentQuestionIndex];
-  if (!currentConfig) {
-    console.error('所有题目已完成');
-    if (resultDiv) {
-      resultDiv.textContent = '所有题目已完成';
-    }
-    return;
-  }
-  
-  // 获取提示词
-  const prompt = promptInput ? promptInput.value.trim() : '';
+  const prompt = promptInput?.value?.trim();
   if (!prompt) {
-    console.error('未输入评分提示词');
-    if (resultDiv) {
-      resultDiv.textContent = '请输入评分提示词';
-    }
+    updateCurrentStatus('请输入评分提示词');
     return;
   }
   
-  console.log('当前题目:', currentConfig.id, '提示词:', prompt);
-  
-  // 显示处理信息
-  if (resultDiv) {
-    resultDiv.textContent = `正在处理第${currentConfig.id}题...`;
-  }
-  
-  // 获取活动标签页
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    if (!tabs || tabs.length === 0) {
-      console.error('未找到活动标签页');
-      if (resultDiv) {
-        resultDiv.textContent = '未找到活动标签页';
-      }
+  try {
+    // 获取当前标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      updateCurrentStatus('未找到活动标签页');
       return;
     }
     
-    const tabId = tabs[0].id;
-    console.log('找到活动标签页:', tabId);
+    updateCurrentStatus('正在启动...');
+    updateReviewStatus(true);
     
-    // 检查是否可以截图
-    if (!canCapture()) {
-      console.log('截图过于频繁，等待后重试...');
-      if (autoReviewActive) {
-        addTimer(startReview, MIN_CAPTURE_INTERVAL);
+    // 发送开始阅卷消息给background
+    chrome.runtime.sendMessage({
+      action: 'start_review',
+      config: {
+        area: selectedArea,
+        prompt: prompt,
+        platform: currentPlatform,
+        tabId: tab.id
       }
-      return;
-    }
-    
-    // 再次检查自动阅卷状态
-    if (!autoReviewActive) {
-      console.log('自动阅卷已停止，退出...');
-      if (resultDiv) {
-        resultDiv.textContent = '阅卷已停止';
-      }
-      return;
-    }
-    
-    // 截图
-    console.log('开始截图...');
-    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
-      // 检查自动阅卷状态
-      if (!autoReviewActive) {
-        console.log('自动阅卷已停止，退出...');
-        return;
-      }
-      
+    }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error('截图失败:', chrome.runtime.lastError);
-        if (resultDiv) {
-          resultDiv.textContent = '截图失败，请重试';
-        }
-        
-        // 重试截图
-        if (autoReviewActive) {
-          addTimer(startReview, MIN_CAPTURE_INTERVAL);
-        }
+        logError('启动阅卷失败:', chrome.runtime.lastError);
+        updateCurrentStatus('启动失败');
+        updateReviewStatus(false);
         return;
       }
       
-      if (!dataUrl) {
-        console.error('截图返回空数据');
-        if (resultDiv) {
-          resultDiv.textContent = '截图失败，请重试';
-        }
-        
-        // 重试截图
-        if (autoReviewActive) {
-          addTimer(startReview, MIN_CAPTURE_INTERVAL);
-        }
-        return;
+      if (response && response.success) {
+        updateCurrentStatus('自动阅卷中...');
+        log('阅卷启动成功');
+      } else {
+        updateCurrentStatus('启动失败: ' + (response?.error || '未知错误'));
+        updateReviewStatus(false);
       }
-      
-      console.log('截图成功，开始裁剪...');
-      
-      // 裁剪图片
-      cropImage(dataUrl, selectedArea).then(croppedUrl => {
-        // 检查自动阅卷状态
-        if (!autoReviewActive) {
-          console.log('自动阅卷已停止，退出...');
-          return;
-        }
-        
-        console.log('图片裁剪成功，开始智能评分...');
-        
-        if (resultDiv) {
-          resultDiv.textContent = '正在智能评分...';
-        }
-        
-        // 调用豆包API进行评分
-        callDoubaoAPI(prompt, croppedUrl).then(apiResult => {
-          // 检查自动阅卷状态
-          if (!autoReviewActive) {
-            console.log('自动阅卷已停止，退出...');
-            return;
-          }
-          
-          if (!apiResult || !apiResult.choices || !apiResult.choices[0]) {
-            console.error('API返回无效结果:', apiResult);
-            if (resultDiv) {
-              resultDiv.textContent = '评分失败，请重试';
-            }
-            return;
-          }
-          
-          // 处理API返回结果
-          const msg = apiResult.choices[0].message;
-          let text = '';
-          
-          if (Array.isArray(msg.content)) {
-            text = msg.content.map(item => item.text || '').join('\n');
-          } else if (typeof msg.content === 'string') {
-            text = msg.content;
-          } else {
-            text = JSON.stringify(msg.content);
-          }
-          
-          console.log('AI评分结果:', text);
-          
-          if (resultDiv) {
-            resultDiv.textContent = text || '评分完成';
-          }
-          
-          // 提取分数
-          const score = extractScore(text);
-          if (!score) {
-            console.error('无法提取分数，跳过提交操作');
-            if (resultDiv) {
-              resultDiv.textContent = '未识别到分数，请重试';
-            }
-            return;
-          }
-          
-          console.log('提取到分数:', score);
-          
-          // 如果分数为0，重新分析
-          if (parseFloat(score) === 0) {
-            console.log('分数为0，重新分析...');
-            
-            const reAnalyzePrompt = `请仔细检查图片中的学生答题内容，${prompt.replace('对图片中的学生答题内容进行识别与评分，核心评分规则：', '')}请重新分析并给出准确的分数。`;
-            
-            callDoubaoAPI(reAnalyzePrompt, croppedUrl).then(reApiResult => {
-              // 检查自动阅卷状态
-              if (!autoReviewActive) {
-                console.log('自动阅卷已停止，退出...');
-                return;
-              }
-              
-              if (!reApiResult || !reApiResult.choices || !reApiResult.choices[0]) {
-                console.error('重新分析API返回无效结果:', reApiResult);
-                if (resultDiv) {
-                  resultDiv.textContent = '重新分析失败，请重试';
-                }
-                return;
-              }
-              
-              // 处理重新分析结果
-              const reMsg = reApiResult.choices[0].message;
-              let reText = '';
-              
-              if (Array.isArray(reMsg.content)) {
-                reText = reMsg.content.map(item => item.text || '').join('\n');
-              } else if (typeof reMsg.content === 'string') {
-                reText = reMsg.content;
-              } else {
-                reText = JSON.stringify(reMsg.content);
-              }
-              
-              console.log('重新分析结果:', reText);
-              
-              // 提取重新分析的分数
-              const reScore = extractScore(reText);
-              if (!reScore) {
-                console.error('无法从重新分析中提取分数，使用原分数:', score);
-                executeFillScoreAndSubmit(score, tabId);
-                return;
-              }
-              
-              console.log('重新分析后提取的分数:', reScore);
-              
-              // 执行填分和提交操作
-              executeFillScoreAndSubmit(reScore, tabId);
-            }).catch(error => {
-              console.error('重新分析失败:', error);
-              if (resultDiv) {
-                resultDiv.textContent = '重新分析失败，请重试';
-              }
-            });
-          } else {
-            // 分数不为0，直接提交
-            executeFillScoreAndSubmit(score, tabId);
-          }
-        }).catch(error => {
-          console.error('调用API评分失败:', error);
-          if (resultDiv) {
-            resultDiv.textContent = '评分失败，请重试';
-          }
-        });
-      }).catch(error => {
-        console.error('裁剪图片失败:', error);
-        if (resultDiv) {
-          resultDiv.textContent = '截图失败，请重试';
-        }
-        
-        // 重试
-        if (autoReviewActive) {
-          addTimer(startReview, MIN_CAPTURE_INTERVAL);
-        }
-      });
     });
+    
+  } catch (error) {
+    logError('开始阅卷出错:', error);
+    updateCurrentStatus('错误: ' + error.message);
+    updateReviewStatus(false);
+  }
+}
+
+// ============ 停止阅卷 ============
+function onStopReview() {
+  log('停止阅卷...');
+  
+  chrome.runtime.sendMessage({ action: 'stop_review' }, (response) => {
+    if (chrome.runtime.lastError) {
+      logError('停止阅卷失败:', chrome.runtime.lastError);
+      updateCurrentStatus('停止失败');
+      return;
+    }
+    
+    updateCurrentStatus('已停止');
+    updateReviewStatus(false);
+    log('阅卷停止成功');
   });
 }
 
-// 监听自动开始阅卷消息
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === 'auto_start_review') {
-    console.log('收到自动开始阅卷消息');
-    
-    // 启动自动阅卷
-    if (!autoReviewActive) {
-      autoReviewActive = true;
-      console.log('启动自动阅卷');
-    }
-    
-    // 点击开始按钮
-    if (startBtn) {
-      startBtn.click();
-    }
+// ============ 单次阅卷 ============
+async function onSingleReview() {
+  log('执行单次阅卷...');
+  
+  // 检查配置
+  if (!selectedArea) {
+    updateCurrentStatus('请先选择阅卷区域');
+    return;
   }
-});
-
-// 初始化自动阅卷状态
-function initAutoReview() {
-  console.log('初始化自动阅卷状态...');
-  autoReviewActive = false;
-  clearAllTimers();
-  lastCaptureTime = 0;
+  
+  const prompt = promptInput?.value?.trim();
+  if (!prompt) {
+    updateCurrentStatus('请输入评分提示词');
+    return;
+  }
+  
+  try {
+    // 获取当前标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      updateCurrentStatus('未找到活动标签页');
+      return;
+    }
+    
+    updateCurrentStatus('正在阅卷...');
+    
+    // 禁用按钮
+    if (singleBtn) singleBtn.disabled = true;
+    
+    // 发送单次阅卷消息
+    chrome.runtime.sendMessage({
+      action: 'single_review',
+      config: {
+        area: selectedArea,
+        prompt: prompt,
+        platform: currentPlatform,
+        tabId: tab.id
+      }
+    }, (response) => {
+      // 重新启用按钮
+      if (singleBtn) singleBtn.disabled = false;
+      
+      if (chrome.runtime.lastError) {
+        logError('单次阅卷失败:', chrome.runtime.lastError);
+        updateCurrentStatus('阅卷失败');
+        return;
+      }
+      
+      if (response && response.success) {
+        updateAIResult(response.result, response.score);
+        updateCurrentStatus('阅卷完成');
+        reviewCount++;
+        updateReviewCount();
+        log('单次阅卷完成:', response);
+      } else {
+        updateCurrentStatus('失败: ' + (response?.error || '未知错误'));
+      }
+    });
+    
+  } catch (error) {
+    logError('单次阅卷出错:', error);
+    updateCurrentStatus('错误: ' + error.message);
+    if (singleBtn) singleBtn.disabled = false;
+  }
 }
 
-// 页面加载完成后初始化
-window.addEventListener('load', initAutoReview);
+// ============ 状态管理 ============
+function getReviewStatus() {
+  chrome.runtime.sendMessage({ action: 'get_status' }, (response) => {
+    if (chrome.runtime.lastError) {
+      log('获取状态失败（可能是首次启动）');
+      return;
+    }
+    
+    if (response) {
+      isReviewing = response.isActive;
+      updateReviewStatus(response.isActive);
+      
+      if (response.selectedArea && !selectedArea) {
+        selectedArea = response.selectedArea;
+        updateAreaStatus(true);
+      }
+      
+      if (response.platform) {
+        currentPlatform = response.platform;
+        updatePlatformButtons();
+      }
+    }
+  });
+}
+
+function updateReviewStatus(active) {
+  isReviewing = active;
+  
+  if (startBtn) {
+    startBtn.disabled = active;
+    startBtn.style.opacity = active ? '0.6' : '1';
+  }
+  
+  if (stopBtn) {
+    stopBtn.disabled = !active;
+    stopBtn.style.opacity = active ? '1' : '0.6';
+  }
+  
+  if (statusIndicator) {
+    if (active) {
+      statusIndicator.textContent = '● 阅卷中';
+      statusIndicator.className = 'status-indicator active';
+    } else {
+      statusIndicator.textContent = '○ 已停止';
+      statusIndicator.className = 'status-indicator';
+    }
+  }
+}
+
+// ============ UI更新函数 ============
+
+// 更新当前状态
+function updateCurrentStatus(text) {
+  if (currentStatusSpan) {
+    currentStatusSpan.textContent = text;
+  }
+  log('状态:', text);
+}
+
+// 更新阅卷计数
+function updateReviewCount() {
+  if (reviewCountSpan) {
+    reviewCountSpan.textContent = reviewCount;
+  }
+  chrome.storage.local.set({ reviewCount });
+}
+
+// 更新AI结果
+function updateAIResult(result, score) {
+  if (aiResultDiv) {
+    aiResultDiv.textContent = result || '无结果';
+    aiResultDiv.classList.add('has-result');
+  }
+  
+  if (lastScoreBadge) {
+    if (score !== undefined && score !== null) {
+      lastScoreBadge.textContent = score + '分';
+      lastScoreBadge.classList.add('has-score');
+    } else {
+      lastScoreBadge.textContent = '--';
+      lastScoreBadge.classList.remove('has-score');
+    }
+  }
+  
+  // 保存到storage
+  chrome.storage.local.set({
+    lastAIResult: { result, score }
+  });
+}
+
+// 追加日志
+function appendLog(text) {
+  if (resultDiv) {
+    const time = new Date().toLocaleTimeString();
+    resultDiv.textContent = `[${time}] ${text}\n` + resultDiv.textContent;
+    // 限制日志长度
+    if (resultDiv.textContent.length > 2000) {
+      resultDiv.textContent = resultDiv.textContent.substring(0, 2000);
+    }
+  }
+}
+
+// 显示结果（兼容旧接口）
+function showResult(text) {
+  appendLog(text);
+}
+
+// ============ 导出功能 ============
+async function onExportRecords() {
+  log('导出阅卷记录...');
+  
+  // 从background获取记录
+  chrome.runtime.sendMessage({ action: 'get_records' }, (response) => {
+    if (chrome.runtime.lastError) {
+      logError('获取记录失败:', chrome.runtime.lastError);
+      updateCurrentStatus('获取记录失败');
+      return;
+    }
+    
+    const records = response?.records || [];
+    const sessionStart = response?.sessionStartTime;
+    
+    if (records.length === 0) {
+      updateCurrentStatus('暂无阅卷记录');
+      alert('暂无阅卷记录可导出');
+      return;
+    }
+    
+    // 生成导出内容
+    const exportContent = generateExportContent(records, sessionStart);
+    
+    // 创建下载
+    downloadAsFile(exportContent, `阅卷记录_${formatDateForFilename(new Date())}.txt`);
+    
+    updateCurrentStatus(`已导出 ${records.length} 条记录`);
+    log('导出完成，共', records.length, '条记录');
+  });
+}
+
+// 生成导出内容
+function generateExportContent(records, sessionStart) {
+  const lines = [];
+  
+  // 标题
+  lines.push('=' .repeat(50));
+  lines.push('           香猫阅卷 - 阅卷记录导出');
+  lines.push('='.repeat(50));
+  lines.push('');
+  
+  // 统计信息
+  const startTime = sessionStart ? new Date(sessionStart).toLocaleString() : '未知';
+  const endTime = new Date().toLocaleString();
+  lines.push(`开始时间: ${startTime}`);
+  lines.push(`结束时间: ${endTime}`);
+  lines.push(`总计阅卷: ${records.length} 份`);
+  lines.push('');
+  
+  // 分数统计
+  const scores = records.map(r => parseFloat(r.score) || 0);
+  const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : 0;
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+  
+  lines.push(`平均分: ${avgScore}`);
+  lines.push(`最高分: ${maxScore}`);
+  lines.push(`最低分: ${minScore}`);
+  lines.push('');
+  lines.push('-'.repeat(50));
+  lines.push('');
+  
+  // 详细记录
+  lines.push('【详细阅卷记录】');
+  lines.push('');
+  
+  records.forEach((record, index) => {
+    lines.push(`第 ${record.index || index + 1} 份 [${record.time || ''}]`);
+    lines.push(`  分数: ${record.score} 分`);
+    lines.push(`  评分理由:`);
+    // 将评分理由缩进显示
+    const reasonLines = (record.reason || '无').split('\n');
+    reasonLines.forEach(line => {
+      lines.push(`    ${line}`);
+    });
+    lines.push('');
+  });
+  
+  lines.push('-'.repeat(50));
+  lines.push('导出时间: ' + new Date().toLocaleString());
+  
+  return lines.join('\n');
+}
+
+// 格式化日期用于文件名
+function formatDateForFilename(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}${month}${day}_${hour}${minute}`;
+}
+
+// 下载为文件
+function downloadAsFile(content, filename) {
+  // 添加BOM以支持中文
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  
+  // 清理
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+
+log('Popup 脚本已加载');
