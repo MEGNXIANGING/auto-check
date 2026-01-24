@@ -399,7 +399,7 @@ function findElement(selectors) {
   return null;
 }
 
-// 填入分数
+// 填入分数（增强版，确保Vue能检测到变化）
 function fillScore(score, platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
   let input = findElement(config.scoreInput);
@@ -409,9 +409,23 @@ function fillScore(score, platform) {
     // 尝试通过placeholder文本查找
     const allInputs = document.querySelectorAll('input');
     for (const inp of allInputs) {
-      if (inp.placeholder && inp.placeholder.includes('得分')) {
+      if (inp.placeholder && (inp.placeholder.includes('得分') || inp.placeholder.includes('分'))) {
         input = inp;
         log('通过placeholder找到输入框');
+        break;
+      }
+    }
+  }
+  
+  // 再尝试查找el-input组件内的input
+  if (!input) {
+    const elInputs = document.querySelectorAll('.el-input .el-input__inner');
+    for (const inp of elInputs) {
+      // 检查是否在评分区域内
+      const parent = inp.closest('.el-input');
+      if (parent) {
+        input = inp;
+        log('通过el-input组件找到输入框');
         break;
       }
     }
@@ -424,112 +438,245 @@ function fillScore(score, platform) {
     const allInputs = document.querySelectorAll('input');
     log('页面上的所有输入框:', allInputs.length);
     allInputs.forEach((inp, i) => {
-      log(`输入框${i}: placeholder="${inp.placeholder}", class="${inp.className}", type="${inp.type}"`);
+      log(`输入框${i}: placeholder="${inp.placeholder}", class="${inp.className}", type="${inp.type}", value="${inp.value}"`);
     });
     
     return false;
   }
   
-  log('找到分数输入框:', input.placeholder, input.className);
+  log('找到分数输入框:', input.placeholder, input.className, '当前值:', input.value);
   
-  // 聚焦输入框
+  const scoreStr = score.toString();
+  
+  // 方法1: 模拟用户输入过程
+  // 先聚焦
   input.focus();
-  input.click();
   
-  // 清空当前值
-  input.value = '';
+  // 选中所有内容
+  input.select();
   
-  // 使用原生setter设置值（绕过Vue的getter/setter）
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  nativeInputValueSetter.call(input, score.toString());
+  // 模拟键盘输入 - 先清空
+  document.execCommand('selectAll', false, null);
+  document.execCommand('delete', false, null);
   
-  // 触发input事件（Vue v-model监听这个事件）
-  const inputEvent = new Event('input', { bubbles: true, cancelable: true });
-  input.dispatchEvent(inputEvent);
+  // 逐字符输入（模拟真实用户输入）
+  for (const char of scoreStr) {
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: char,
+      code: `Digit${char}`,
+      keyCode: char.charCodeAt(0),
+      which: char.charCodeAt(0),
+      bubbles: true
+    });
+    input.dispatchEvent(keydownEvent);
+    
+    // 使用insertText命令插入字符
+    document.execCommand('insertText', false, char);
+    
+    const keyupEvent = new KeyboardEvent('keyup', {
+      key: char,
+      code: `Digit${char}`,
+      keyCode: char.charCodeAt(0),
+      which: char.charCodeAt(0),
+      bubbles: true
+    });
+    input.dispatchEvent(keyupEvent);
+  }
+  
+  // 方法2: 如果execCommand不生效，使用原生setter
+  if (input.value !== scoreStr) {
+    log('execCommand方式未生效，使用原生setter');
+    
+    // 使用原生setter设置值
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    nativeInputValueSetter.call(input, scoreStr);
+    
+    // 触发input事件
+    input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+  }
   
   // 触发change事件
-  const changeEvent = new Event('change', { bubbles: true, cancelable: true });
-  input.dispatchEvent(changeEvent);
+  input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
   
-  // 触发keyup事件
-  input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter' }));
+  // 触发compositionend（某些Vue组件需要）
+  input.dispatchEvent(new CompositionEvent('compositionend', { 
+    bubbles: true, 
+    data: scoreStr 
+  }));
   
-  // 对于Element UI，可能需要触发blur来确认输入
-  setTimeout(() => {
-    input.dispatchEvent(new Event('blur', { bubbles: true }));
-  }, 50);
+  // 触发blur确认输入
+  input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
   
-  log('分数已填入:', score, '当前input.value:', input.value);
+  // 验证值是否正确设置
+  log('分数填入完成, input.value:', input.value, '期望值:', scoreStr);
+  
+  if (input.value !== scoreStr) {
+    logError('警告：输入框值与期望不符！尝试强制设置...');
+    input.value = scoreStr;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  
   return true;
 }
 
-// 点击提交按钮
+// 点击提交按钮（精确版，确保只点击提交按钮）
 function clickSubmit(platform) {
-  const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
-  let btn = findElement(config.submitButton);
+  log('');
+  log('╔══════════════════════════════════════╗');
+  log('║      开始查找并点击提交按钮          ║');
+  log('╚══════════════════════════════════════╝');
   
-  // 如果没找到，尝试通过文本内容查找
-  if (!btn) {
-    const allButtons = Array.from(document.querySelectorAll('button'));
-    // 优先找包含"提交"文本的primary按钮
-    btn = allButtons.find(b => {
-      const text = b.textContent.trim();
-      const isPrimary = b.classList.contains('el-button--primary');
-      return text.includes('提交') && isPrimary;
-    });
+  // 获取所有按钮
+  const allButtons = Array.from(document.querySelectorAll('button'));
+  log('页面按钮总数:', allButtons.length);
+  
+  // 详细列出所有按钮
+  log('--- 页面所有按钮列表 ---');
+  allButtons.forEach((b, i) => {
+    const text = b.textContent.trim().replace(/\s+/g, ' ');
+    const rect = b.getBoundingClientRect();
+    log(`  [${i}] text="${text}" | class="${b.className}" | pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
+  });
+  log('--- 按钮列表结束 ---');
+  
+  // 只找文本完全是"提交"的按钮（去除空白后）
+  let submitBtn = null;
+  
+  for (const btn of allButtons) {
+    const text = btn.textContent.trim().replace(/\s+/g, '');
     
-    // 如果还没找到，放宽条件
-    if (!btn) {
-      btn = allButtons.find(b => {
-        const text = b.textContent.trim();
-        return text === '提交' || text.includes('提交');
-      });
-    }
-    
-    // 最后尝试找任何包含确定/保存的按钮
-    if (!btn) {
-      btn = allButtons.find(b => {
-        const text = b.textContent.trim();
-        return text.includes('确定') || text.includes('保存');
-      });
+    // 只匹配文本完全是"提交"的按钮
+    if (text === '提交') {
+      log(`找到候选按钮: text="${text}", class="${btn.className}"`);
+      
+      // 确认是primary按钮（绿色提交按钮）
+      if (btn.classList.contains('el-button--primary')) {
+        submitBtn = btn;
+        log('✓ 确认是primary提交按钮');
+        break;
+      } else {
+        // 如果不是primary但文本是"提交"，也记录下来作为备选
+        if (!submitBtn) {
+          submitBtn = btn;
+          log('⚠ 非primary按钮，作为备选');
+        }
+      }
     }
   }
   
-  if (!btn) {
-    logError('未找到提交按钮，平台:', platform);
-    
-    // 调试：列出所有按钮
-    const allButtons = document.querySelectorAll('button');
-    log('页面上的所有按钮:', allButtons.length);
-    allButtons.forEach((b, i) => {
-      log(`按钮${i}: text="${b.textContent.trim().substring(0, 20)}", class="${b.className}"`);
-    });
-    
+  if (!submitBtn) {
+    logError('✗ 未找到提交按钮！');
     return false;
   }
   
-  log('找到提交按钮:', btn.textContent.trim(), btn.className);
+  // 详细记录将要点击的按钮
+  const btnText = submitBtn.textContent.trim().replace(/\s+/g, '');
+  const btnClass = submitBtn.className;
+  const btnRect = submitBtn.getBoundingClientRect();
   
-  // 确保按钮可点击
-  if (btn.disabled) {
-    btn.disabled = false;
-    btn.removeAttribute('disabled');
-    log('已移除按钮禁用状态');
+  log('');
+  log('>>> 将要点击的按钮 <<<');
+  log(`    文本: "${btnText}"`);
+  log(`    class: "${btnClass}"`);
+  log(`    位置: left=${Math.round(btnRect.left)}, top=${Math.round(btnRect.top)}, right=${Math.round(btnRect.right)}, bottom=${Math.round(btnRect.bottom)}`);
+  log(`    宽高: ${Math.round(btnRect.width)}x${Math.round(btnRect.height)}`);
+  
+  // 最后确认：文本必须是"提交"
+  if (btnText !== '提交') {
+    logError(`✗ 安全检查失败！按钮文本是"${btnText}"而不是"提交"，拒绝点击`);
+    return false;
   }
   
-  // 模拟真实点击
-  const rect = btn.getBoundingClientRect();
-  const clickEvent = new MouseEvent('click', {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-    clientX: rect.left + rect.width / 2,
-    clientY: rect.top + rect.height / 2
-  });
-  btn.dispatchEvent(clickEvent);
+  log('✓ 安全检查通过，文本确认是"提交"');
   
-  log('提交按钮已点击');
+  // 点击按钮
+  log('>>> 执行点击 <<<');
+  submitBtn.click();
+  log('>>> 点击完成 <<<');
+  log('');
+  
+  // 设置弹窗监听
+  setupConfirmDialogWatcher();
+  
   return true;
+}
+
+// 监听并自动处理确认弹窗
+function setupConfirmDialogWatcher() {
+  log('设置弹窗监听（只处理"未提交"确认弹窗）...');
+  
+  // 定时检查弹窗
+  const checkTimes = [300, 600, 1000];
+  checkTimes.forEach(delay => {
+    setTimeout(() => {
+      const handled = handleConfirmDialog();
+      if (handled) {
+        log(`✓ 在 ${delay}ms 时处理了确认弹窗`);
+      }
+    }, delay);
+  });
+}
+
+// 处理确认对话框（严格版 - 只处理"未提交"弹窗）
+function handleConfirmDialog() {
+  log('检查是否有"未提交"确认弹窗...');
+  
+  // 只检查Element UI MessageBox
+  const msgBoxWrapper = document.querySelector('.el-message-box__wrapper');
+  if (!msgBoxWrapper) {
+    log('  - 没有找到.el-message-box__wrapper');
+    return false;
+  }
+  
+  const wrapperStyle = window.getComputedStyle(msgBoxWrapper);
+  if (wrapperStyle.display === 'none' || wrapperStyle.visibility === 'hidden') {
+    log('  - MessageBox wrapper不可见');
+    return false;
+  }
+  
+  const msgBox = msgBoxWrapper.querySelector('.el-message-box');
+  if (!msgBox) {
+    log('  - 没有找到.el-message-box');
+    return false;
+  }
+  
+  const msgText = msgBox.textContent || '';
+  log('  - 检测到MessageBox, 内容:', msgText.substring(0, 100));
+  
+  // 严格检查：必须同时包含"未提交"和"继续"这两个关键词
+  if (!msgText.includes('未提交')) {
+    log('  - 弹窗内容不包含"未提交"，忽略');
+    return false;
+  }
+  
+  log('  - ✓ 确认是"未提交"弹窗');
+  
+  // 查找"继续"按钮
+  const btnsContainer = msgBox.querySelector('.el-message-box__btns');
+  if (!btnsContainer) {
+    log('  - 没有找到按钮容器');
+    return false;
+  }
+  
+  const buttons = btnsContainer.querySelectorAll('button');
+  log(`  - 弹窗中有 ${buttons.length} 个按钮`);
+  
+  for (const btn of buttons) {
+    const btnText = btn.textContent.trim();
+    log(`    - 按钮: "${btnText}"`);
+    
+    // 只点击"继续"按钮
+    if (btnText === '继续') {
+      log('  >>> 点击"继续"按钮 <<<');
+      btn.click();
+      log('  >>> 点击完成 <<<');
+      return true;
+    }
+  }
+  
+  log('  - 没有找到"继续"按钮');
+  return false;
 }
 
 // 点击下一份按钮
@@ -635,27 +782,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     
     case 'fill_score_and_submit':
-      // 填分并提交
+      // 填分并提交（简化版，确保只点击一次提交按钮）
       try {
-        log('收到填分提交请求, 分数:', msg.score, '平台:', msg.platform);
+        log('========== 开始填分提交流程 ==========');
+        log('分数:', msg.score, '平台:', msg.platform);
         
+        // 步骤1: 填入分数
         const filled = fillScore(msg.score, msg.platform);
         if (!filled) {
           sendResponse({ success: false, error: '未找到分数输入框' });
           return false;
         }
         
-        // 等待Vue响应式系统更新后再提交
+        // 步骤2: 等待Vue响应式系统更新后点击提交
         setTimeout(() => {
-          log('准备点击提交按钮...');
+          log('步骤2: 点击提交按钮');
           const submitted = clickSubmit(msg.platform);
-          if (submitted) {
-            log('提交成功');
-            sendResponse({ success: true });
-          } else {
+          
+          if (!submitted) {
             log('提交失败：未找到提交按钮');
             sendResponse({ success: false, error: '未找到提交按钮' });
+            return;
           }
+          
+          // 步骤3: 等待弹窗处理
+          setTimeout(() => {
+            log('步骤3: 检查弹窗');
+            handleConfirmDialog();
+            
+            // 步骤4: 返回成功
+            setTimeout(() => {
+              log('========== 填分提交流程完成 ==========');
+              sendResponse({ success: true });
+            }, 500);
+          }, 800);
         }, 500);
         
         return true;

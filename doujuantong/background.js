@@ -17,8 +17,8 @@ let reviewRecords = [];
 let sessionStartTime = null;
 
 const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
-const SUBMIT_DELAY = 2000;         // 提交后等待时间
-const NEXT_PAGE_DELAY = 1500;      // 切换下一份的等待时间
+const SUBMIT_DELAY = 3000;         // 提交后等待时间（包含弹窗处理）
+const NEXT_PAGE_DELAY = 2000;      // 切换下一份的等待时间
 
 // ============ 工具函数 ============
 
