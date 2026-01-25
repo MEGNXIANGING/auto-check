@@ -9,7 +9,8 @@ let reviewState = {
   currentTabId: null,        // 当前操作的标签页ID
   lastCaptureTime: 0,        // 上次截图时间
   retryCount: 0,             // 重试次数
-  maxRetries: 3              // 最大重试次数
+  maxRetries: 3,             // 最大重试次数
+  limit: 0                   // 阅卷次数限制（0=不限制）
 };
 
 // 阅卷记录
@@ -195,7 +196,15 @@ async function executeReviewCycle() {
     return;
   }
   
-  log('执行阅卷周期...');
+  // 检查是否达到阅卷次数限制
+  if (reviewState.limit > 0 && reviewRecords.length >= reviewState.limit) {
+    log(`已达到阅卷次数限制（${reviewState.limit}份），自动停止`);
+    broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（达到限制），自动停止`);
+    stopReview();
+    return;
+  }
+  
+  log('执行阅卷周期...', `(${reviewRecords.length + 1}/${reviewState.limit || '∞'})`);
   
   try {
     // 1. 检查配置
@@ -366,16 +375,20 @@ async function startReview(config) {
   reviewState.currentTabId = config.tabId;
   reviewState.retryCount = 0;
   reviewState.lastCaptureTime = 0;
+  reviewState.limit = config.limit || 0;  // 阅卷次数限制
   
   // 清空阅卷记录，开始新的阅卷会话
   reviewRecords = [];
   sessionStartTime = new Date();
   
+  log('阅卷次数限制:', reviewState.limit > 0 ? `${reviewState.limit}份` : '不限制');
+  
   // 保存配置到storage
   chrome.storage.local.set({
     selectedArea: config.area,
     lastPrompt: config.prompt,
-    currentPlatform: config.platform
+    currentPlatform: config.platform,
+    reviewLimit: config.limit
   });
   
   // 开始阅卷循环

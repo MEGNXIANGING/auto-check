@@ -44,6 +44,17 @@
       <textarea id="prompt" class="input-area" rows="2" placeholder="请输入评分提示词，如：正确答案为"人生观"，完全匹配得1分，否则得0分"></textarea>
     </div>
     
+    <!-- 阅卷次数限制 -->
+    <div class="section">
+      <div class="limit-row">
+        <label class="section-label">阅卷份数限制</label>
+        <div class="limit-input-group">
+          <input type="number" id="review-limit" class="limit-input" min="0" max="9999" placeholder="0" value="0">
+          <span class="limit-hint">份 (0=不限制)</span>
+        </div>
+      </div>
+    </div>
+    
     <!-- 操作按钮 -->
     <div class="section">
       <div class="button-group">
@@ -56,8 +67,8 @@
     <!-- 阅卷统计 -->
     <div class="stats-bar">
       <div class="stat-item">
-        <span class="stat-label">本次已阅</span>
-        <span id="review-count" class="stat-value">0</span>
+        <span class="stat-label">本次进度</span>
+        <span id="review-progress" class="stat-value"><span id="review-count">0</span><span id="review-limit-display"></span></span>
       </div>
       <div class="stat-item">
         <span class="stat-label">当前状态</span>

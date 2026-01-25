@@ -5,6 +5,7 @@ let platformZxwBtn, platformDnjyBtn, currentPlatformText;
 let selectBtn, startBtn, stopBtn, singleBtn, exportBtn;
 let promptInput, resultDiv, areaStatus, statusIndicator;
 let aiResultDiv, lastScoreBadge, reviewCountSpan, currentStatusSpan;
+let reviewLimitInput;
 
 // ============ 状态 ============
 let currentPlatform = 'dnjy'; // 默认懂你教育
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   reviewCountSpan = document.getElementById('review-count');
   currentStatusSpan = document.getElementById('current-status');
   exportBtn = document.getElementById('export-btn');
+  reviewLimitInput = document.getElementById('review-limit');
   
   // 绑定事件
   bindEvents();
@@ -131,6 +133,19 @@ function bindEvents() {
     exportBtn.addEventListener('click', onExportRecords);
   }
   
+  // 阅卷次数限制
+  if (reviewLimitInput) {
+    reviewLimitInput.addEventListener('change', (e) => {
+      const limit = parseInt(e.target.value) || 0;
+      chrome.storage.local.set({ reviewLimit: limit });
+      updateReviewCount();  // 更新显示
+      log('阅卷限制设置为:', limit);
+    });
+    reviewLimitInput.addEventListener('input', (e) => {
+      updateReviewCount();  // 实时更新显示
+    });
+  }
+  
   // 监听状态更新
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'status_update') {
@@ -152,7 +167,7 @@ function bindEvents() {
 
 // ============ 配置加载 ============
 function loadConfig() {
-  chrome.storage.local.get(['selectedArea', 'lastPrompt', 'currentPlatform', 'reviewRecords', 'lastAIResult'], (data) => {
+  chrome.storage.local.get(['selectedArea', 'lastPrompt', 'currentPlatform', 'reviewRecords', 'lastAIResult', 'reviewLimit'], (data) => {
     log('加载配置:', data);
     
     // 加载选择区域
@@ -177,6 +192,11 @@ function loadConfig() {
       currentPlatform = data.currentPlatform;
     }
     updatePlatformButtons();
+    
+    // 加载阅卷次数限制
+    if (reviewLimitInput) {
+      reviewLimitInput.value = data.reviewLimit || 0;
+    }
     
     // 从background获取当前记录数
     chrome.runtime.sendMessage({ action: 'get_records' }, (response) => {
@@ -296,6 +316,9 @@ async function onStartReview() {
     return;
   }
   
+  // 获取阅卷次数限制
+  const reviewLimit = parseInt(reviewLimitInput?.value) || 0;
+  
   try {
     // 获取当前标签页
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -314,7 +337,8 @@ async function onStartReview() {
         area: selectedArea,
         prompt: prompt,
         platform: currentPlatform,
-        tabId: tab.id
+        tabId: tab.id,
+        limit: reviewLimit  // 传递阅卷次数限制
       }
     }, (response) => {
       if (chrome.runtime.lastError) {
@@ -325,8 +349,9 @@ async function onStartReview() {
       }
       
       if (response && response.success) {
-        updateCurrentStatus('自动阅卷中...');
-        log('阅卷启动成功');
+        const limitText = reviewLimit > 0 ? `（限制${reviewLimit}份）` : '';
+        updateCurrentStatus(`自动阅卷中...${limitText}`);
+        log('阅卷启动成功，限制:', reviewLimit);
       } else {
         updateCurrentStatus('启动失败: ' + (response?.error || '未知错误'));
         updateReviewStatus(false);
@@ -487,6 +512,18 @@ function updateReviewCount() {
   if (reviewCountSpan) {
     reviewCountSpan.textContent = reviewCount;
   }
+  
+  // 更新限制显示
+  const limitDisplay = document.getElementById('review-limit-display');
+  if (limitDisplay) {
+    const limit = parseInt(reviewLimitInput?.value) || 0;
+    if (limit > 0) {
+      limitDisplay.textContent = ` / ${limit}`;
+    } else {
+      limitDisplay.textContent = '';
+    }
+  }
+  
   chrome.storage.local.set({ reviewCount });
 }
 
