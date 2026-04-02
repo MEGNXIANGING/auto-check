@@ -9,7 +9,7 @@ let reviewState = {
   currentTabId: null,        // 当前操作的标签页ID
   lastCaptureTime: 0,        // 上次截图时间
   retryCount: 0,             // 重试次数
-  maxRetries: 3,             // 最大重试次数
+  maxRetries: 5,             // 最大重试次数（含页面刷新恢复）
   limit: 0                   // 阅卷次数限制（0=不限制）
 };
 
@@ -23,7 +23,8 @@ let sessionStartTime = null;
 const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
 const SUBMIT_DELAY = 3000;         // 提交后等待时间（包含弹窗处理）
 const NEXT_PAGE_DELAY = 2000;      // 切换下一份的等待时间
-const AMEQP_PAGE_LOAD_DELAY = 5000; // AMEQP 提交后等待 AJAX 完成（含服务器响应时间）
+const AMEQP_PAGE_LOAD_DELAY = 5000;  // AMEQP 提交后等待 AJAX 完成（含服务器响应时间）
+const AMEQP_AFTER_CONFIRM_DELAY = 5000; // AMEQP 点击确认弹窗"确定"后等待实际AJAX完成
 
 // ============ 工具函数 ============
 
@@ -204,7 +205,7 @@ async function executeReviewCycle() {
   if (reviewState.limit > 0 && reviewRecords.length >= reviewState.limit) {
     log(`已达到阅卷次数限制（${reviewState.limit}份），自动停止`);
     broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（达到限制），自动停止`);
-    stopReview();
+    stopReview('达到阅卷次数限制');
     return;
   }
   
@@ -284,36 +285,46 @@ async function executeReviewCycle() {
     const submitResult = await fillScoreAndSubmit(reviewState.currentTabId, score);
     if (!reviewState.isActive) return;
     
-    // 10. 重置重试计数
+    // 10. 重置重试计数（提交成功说明通信正常）
     reviewState.retryCount = 0;
+    reviewState.commRetryCount = 0;
     
     // 11. 根据平台决定是否需要手动点"下一份"
     const isAutoNext = AUTO_NEXT_PLATFORMS.includes(reviewState.platform);
     
     if (isAutoNext) {
-      // AMEQP: 提交后自动加载下一份，等待 AJAX 完成后再检测弹窗
-      log(`AMEQP: 提交成功，等待 ${AMEQP_PAGE_LOAD_DELAY}ms (AJAX响应)...`);
-      broadcastStatus(`提交成功，等待页面加载(${AMEQP_PAGE_LOAD_DELAY/1000}秒)...`);
-      await delay(AMEQP_PAGE_LOAD_DELAY);
-      if (!reviewState.isActive) return;
-      
-      // AJAX 应该已完成，检测是否有弹窗（如"已经是最后一份试卷！"）
-      log('AMEQP: 等待结束，开始检测弹窗...');
-      broadcastStatus('检测弹窗...');
-      const dialogResult = await checkAmeqpDialog(reviewState.currentTabId);
-      log('AMEQP: 弹窗检测结果:', JSON.stringify(dialogResult));
-      
-      if (dialogResult && dialogResult.isLastPaper) {
-        log('★★★ 已经是最后一份试卷，自动停止 ★★★');
-        broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
-        stopReview();
-        return;
-      }
-      if (dialogResult && dialogResult.dismissed) {
-        log('AMEQP: 弹窗已处理(非最后一份):', dialogResult.dialogText);
-      }
-      if (!dialogResult || !dialogResult.dismissed) {
-        log('AMEQP: 无弹窗，继续下一份');
+      // AMEQP 弹窗处理循环:
+      //   提交 → 等待 → 检测弹窗 → 如果是确认弹窗(如"分值偏低") → 点确定 → 再等待 → 再检测
+      //   直到: 无弹窗(正常继续) 或 "最后一份"(停止)
+      const MAX_DIALOG_ROUNDS = 3;
+      for (let round = 1; round <= MAX_DIALOG_ROUNDS; round++) {
+        const waitMs = round === 1 ? AMEQP_PAGE_LOAD_DELAY : AMEQP_AFTER_CONFIRM_DELAY;
+        log(`AMEQP: 弹窗检测第${round}轮，等待 ${waitMs}ms...`);
+        broadcastStatus(round === 1 ? '提交成功，等待页面响应...' : '确认弹窗已处理，等待实际提交...');
+        await delay(waitMs);
+        if (!reviewState.isActive) return;
+        
+        log(`AMEQP: 第${round}轮等待结束，检测弹窗...`);
+        const dialogResult = await checkAmeqpDialog(reviewState.currentTabId);
+        log(`AMEQP: 第${round}轮弹窗结果:`, JSON.stringify(dialogResult));
+        
+        if (dialogResult && dialogResult.isLastPaper) {
+          log('★★★ 已经是最后一份试卷，自动停止 ★★★');
+          broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
+          stopReview('最后一份试卷');
+          return;
+        }
+        
+        if (dialogResult && dialogResult.dismissed) {
+          // 弹窗已处理(如"分值偏低确认")，点确定后会触发真正的AJAX提交
+          // 继续下一轮等待+检测
+          log(`AMEQP: 第${round}轮处理了弹窗: "${dialogResult.dialogText}"，继续检测...`);
+          continue;
+        }
+        
+        // 无弹窗，正常继续下一份
+        log(`AMEQP: 第${round}轮无弹窗，页面已就绪，继续下一份`);
+        break;
       }
     } else {
       // 其他平台: 需要手动点击"下一份"按钮
@@ -334,22 +345,93 @@ async function executeReviewCycle() {
     
   } catch (error) {
     logError('阅卷出错:', error);
-    broadcastStatus('错误: ' + error.message);
+    if (!reviewState.isActive) return;
     
-    // 重试逻辑
-    if (reviewState.isActive && reviewState.retryCount < reviewState.maxRetries) {
-      reviewState.retryCount++;
-      log(`重试第 ${reviewState.retryCount} 次...`);
-      broadcastStatus(`重试第 ${reviewState.retryCount} 次...`);
-      await delay(MIN_CAPTURE_INTERVAL);
-      if (reviewState.isActive) {
-        executeReviewCycle();
+    const errMsg = error.message || '';
+    const isCommError = (
+      errMsg.includes('Receiving end does not exist') ||
+      errMsg.includes('通信失败') ||
+      errMsg.includes('Could not establish connection') ||
+      errMsg.includes('message port closed') ||
+      errMsg.includes('Extension context invalidated')
+    );
+    
+    if (isCommError) {
+      // ========== 通信错误：页面刷新/AJAX导致，不计入重试上限，永远等待恢复 ==========
+      reviewState.commRetryCount = (reviewState.commRetryCount || 0) + 1;
+      log(`通信断开 (第${reviewState.commRetryCount}次)，页面可能刷新/AJAX中，等待恢复...`);
+      broadcastStatus(`页面加载中，等待恢复连接(${reviewState.commRetryCount})...`);
+      
+      const ready = await waitForContentScript(reviewState.currentTabId, 20000);
+      if (!reviewState.isActive) return;
+      
+      if (ready) {
+        log('Content script 已恢复，重置计数，继续阅卷');
+        broadcastStatus('连接已恢复，继续阅卷...');
+        reviewState.retryCount = 0;
+        reviewState.commRetryCount = 0;
+      } else {
+        log('Content script 20秒内未恢复，再等一轮...');
+        broadcastStatus('等待页面加载...');
+        // 如果连续通信失败太多次(比如标签页被关了)，才停止
+        if (reviewState.commRetryCount >= 10) {
+          log('连续通信失败10次，标签页可能已关闭，停止阅卷');
+          broadcastStatus('无法连接页面，阅卷已停止');
+          stopReview('连续通信失败10次');
+          return;
+        }
       }
-    } else if (reviewState.isActive) {
-      broadcastStatus('多次重试失败，阅卷已停止');
-      stopReview();
+    } else {
+      // ========== 业务错误：API失败、分数识别失败等，计入重试上限 ==========
+      reviewState.retryCount++;
+      log(`业务错误: "${errMsg}", 重试 ${reviewState.retryCount}/${reviewState.maxRetries}`);
+      
+      if (reviewState.retryCount > reviewState.maxRetries) {
+        broadcastStatus(`连续${reviewState.maxRetries}次业务错误，阅卷已停止: ${errMsg}`);
+        stopReview(`业务错误${reviewState.maxRetries}次: ${errMsg}`);
+        return;
+      }
+      
+      broadcastStatus(`错误: ${errMsg}，重试(${reviewState.retryCount})...`);
+      await delay(MIN_CAPTURE_INTERVAL);
+    }
+    
+    if (reviewState.isActive) {
+      executeReviewCycle();
     }
   }
+}
+
+// 等待 content script 就绪（页面刷新后重新连接）
+async function waitForContentScript(tabId, maxWaitMs) {
+  const startTime = Date.now();
+  const pingInterval = 2000;
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const ok = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'ping' }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(false);
+          } else {
+            resolve(response && response.success);
+          }
+        });
+      });
+      if (ok) {
+        log(`waitForContentScript: 已就绪 (${Date.now() - startTime}ms)`);
+        return true;
+      }
+    } catch (e) {
+      // ignore
+    }
+    log(`waitForContentScript: 未就绪，${pingInterval}ms 后重试...`);
+    await delay(pingInterval);
+    if (!reviewState.isActive) return false;
+  }
+  
+  log(`waitForContentScript: 超时 (${maxWaitMs}ms)`);
+  return false;
 }
 
 // 填分并提交
@@ -467,9 +549,10 @@ async function startReview(config) {
 }
 
 // 停止阅卷
-function stopReview() {
-  log('停止阅卷');
+function stopReview(reason) {
+  log(`停止阅卷, 原因: ${reason || '用户手动停止'}, 已完成: ${reviewRecords.length}份`);
   reviewState.isActive = false;
+  reviewState.commRetryCount = 0;
   broadcastStatus('阅卷已停止');
   return { success: true };
 }
@@ -669,7 +752,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId === reviewState.currentTabId) {
     log('目标标签页已关闭，停止阅卷');
-    stopReview();
+    stopReview('标签页已关闭');
   }
 });
 
