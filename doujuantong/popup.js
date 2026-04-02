@@ -1,7 +1,7 @@
 // popup.js - 负责UI交互和配置管理
 
 // ============ DOM元素 ============
-let platformZxwBtn, platformDnjyBtn, currentPlatformText;
+let platformZxwBtn, platformDnjyBtn, platformAmeqpBtn, currentPlatformText;
 let selectBtn, startBtn, stopBtn, singleBtn, exportBtn;
 let promptInput, resultDiv, areaStatus, statusIndicator;
 let aiResultDiv, lastScoreBadge, reviewCountSpan, currentStatusSpan;
@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 获取DOM元素
   platformZxwBtn = document.getElementById('platform-zxw');
   platformDnjyBtn = document.getElementById('platform-dnjy');
+  platformAmeqpBtn = document.getElementById('platform-ameqp');
   currentPlatformText = document.getElementById('current-platform-text');
   selectBtn = document.getElementById('select-area');
   startBtn = document.getElementById('start-review');
@@ -99,6 +100,9 @@ function bindEvents() {
   }
   if (platformDnjyBtn) {
     platformDnjyBtn.addEventListener('click', () => selectPlatform('dnjy'));
+  }
+  if (platformAmeqpBtn) {
+    platformAmeqpBtn.addEventListener('click', () => selectPlatform('ameqp'));
   }
   
   // 选择区域
@@ -233,6 +237,12 @@ function selectPlatform(platform) {
   platformContent?.classList.remove('show');
 }
 
+const PLATFORM_NAMES = {
+  zxw: '智学网',
+  dnjy: '懂你教育',
+  ameqp: 'AMEQP'
+};
+
 function updatePlatformButtons() {
   if (platformZxwBtn) {
     platformZxwBtn.classList.toggle('active', currentPlatform === 'zxw');
@@ -240,10 +250,12 @@ function updatePlatformButtons() {
   if (platformDnjyBtn) {
     platformDnjyBtn.classList.toggle('active', currentPlatform === 'dnjy');
   }
+  if (platformAmeqpBtn) {
+    platformAmeqpBtn.classList.toggle('active', currentPlatform === 'ameqp');
+  }
   
-  // 更新显示文本
   if (currentPlatformText) {
-    currentPlatformText.textContent = currentPlatform === 'zxw' ? '智学网' : '懂你教育';
+    currentPlatformText.textContent = PLATFORM_NAMES[currentPlatform] || currentPlatform;
   }
 }
 

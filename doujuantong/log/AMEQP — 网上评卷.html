@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<!-- saved from url=(0053)http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx -->
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><title>
+	AMEQP — 网上评卷
+</title><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <script src="./AMEQP — 网上评卷_files/jquery.min.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/jquery.easyui.min.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/easyui-lang-zh_CN.js" type="text/javascript"></script>
+    <link href="./AMEQP — 网上评卷_files/icon.css" rel="stylesheet" type="text/css"><link type="image/x-icon" href="http://47.106.209.135/AMEQP/Images/allcom.ico" rel="shortcut icon">
+    <script src="./AMEQP — 网上评卷_files/InitGird.js"></script>
+    <script src="./AMEQP — 网上评卷_files/common.js"></script>
+    <script src="./AMEQP — 网上评卷_files/tools.js"></script>
+    <!--[if lt IE 8 ]>
+        <script src="../../js/json2.js?t=202201111453"></script>
+        <![endif]-->
+
+    <script src="./AMEQP — 网上评卷_files/ajax.js"></script>
+    <script src="./AMEQP — 网上评卷_files/cookie.js"></script>
+    <script src="./AMEQP — 网上评卷_files/exam.js"></script>
+
+    <script src="./AMEQP — 网上评卷_files/jquery.cookie.js" type="text/javascript"></script>
+    <link href="./AMEQP — 网上评卷_files/layout_mark.css" rel="stylesheet" type="text/css">
+    <script src="./AMEQP — 网上评卷_files/date_help.js" type="text/javascript"></script>
+
+    <script src="./AMEQP — 网上评卷_files/validatebox.js"></script>
+    
+
+    <script src="./AMEQP — 网上评卷_files/mar_control.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/localstorage.js"></script>
+    <script src="./AMEQP — 网上评卷_files/mar_data_load.js" type="text/javascript"></script>
+    <link href="./AMEQP — 网上评卷_files/jquery.Jcrop.min.css" rel="stylesheet" type="text/css">
+    <script src="./AMEQP — 网上评卷_files/jquery.Jcrop.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/jquery.imgpreload.min.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/jscolor.js" type="text/javascript"></script>
+    <script src="./AMEQP — 网上评卷_files/EasyUI_Combotree.js"></script>
+    
+   
+   
+    <style type="text/css">
+        html, body, form {
+            background-image: none;
+        }
+
+        form {
+            height: 100%;
+        }
+
+        .blank {
+            display: block;
+            height: 1px;
+            background: #999;
+            /*border-top:1px solid #999;*/
+        }
+    </style>
+    <style type="text/css">
+        .postil_1vs2_span {
+            cursor: pointer;
+            text-align: center;
+            font-size: 39px;
+            font-family: STKaiti;
+            position: absolute;
+            z-index: 999;
+            color: red;
+            border: 0px;
+            background: rgba(0, 0, 0, 0);
+        }
+
+        .postil_6vs7_span {
+            cursor: pointer;
+            text-align: center;
+            font-size: 30px;
+            font-family: STKaiti;
+            position: absolute;
+            z-index: 999;
+            color: red;
+            border: 0px;
+            background: rgba(0, 0, 0, 0);
+        }
+
+        .postil_5_text {
+            width: 180px;
+            resize: both;
+            overflow: auto;
+            font-weight: bold;
+            font-size: 19px;
+            font-family: STKaiti;
+            position: absolute;
+            z-index: 999;
+            border: 1px #000000 solid;
+            color: red;
+        }
+
+        .postil_5_text_onfocus {
+            width: 180px;
+            resize: both;
+            overflow: auto;
+            font-weight: bold;
+            font-size: 19px;
+            font-family: STKaiti;
+            position: absolute;
+            z-index: 999;
+            color: red;
+            border: 1px #000000 solid;
+            background: #ffffff;
+        }
+
+        .postil_5_text_onblur {
+            cursor: pointer;
+            width: 180px;
+            resize: both;
+            overflow: auto;
+            font-weight: bold;
+            font-size: 19px;
+            font-family: STKaiti;
+            position: absolute;
+            z-index: 999;
+            color: red;
+            border: 0px;
+            background: transparent;
+        }
+
+        .postil_4_div {
+            position: absolute;
+            border: 3px solid #FF0000;
+            margin-top: -3px;
+            margin-left: -3px;
+            cursor: pointer;
+            z-index: 999;
+        }
+
+        .postil_3_div {
+            position: absolute;
+            border-top: 3px solid #FF0000;
+            margin-top: -3px;
+            margin-left: -3px;
+            cursor: pointer;
+            z-index: 999;
+        }
+
+        .sco_list_writeScore {
+            height: auto;
+            padding: 3px 3px;
+            border: solid 1px #C2C2C2;
+            margin: -1px 0px 0px -1px;
+            text-align: center;
+            cursor: pointer;
+            display: inline-block;
+            float: left;
+        }
+
+        .mark_nav_curItemNo {
+            display: inline-block;
+            float: left;
+            font-weight: bold;
+            margin: -1px 0px 0px -1px;
+            padding: 8px 3px;
+            color: red;
+        }
+
+        .mar_nav_scoList {
+            float: left;
+            position: relative;
+            width: auto;
+            /*height: 20px;*/
+            line-height: 20px;
+            margin: 3px 1px 0px 0px;
+            padding: 5px 5px;
+            color: #0c80e8;
+            border: 1px solid #bbb;
+            border-radius: 5px 5px 5px 5px;
+            background: linear-gradient(to bottom,#ffffff 0,#e6e6e6 100%);
+            background-repeat: repeat-x;
+            display: block;
+            cursor: pointer;
+        }
+
+        .postil_to_top {
+            min-width: 50px;
+            padding: 3px;
+            font: 14px/20px arial;
+            text-align: center;
+            position: absolute;
+            cursor: pointer;
+            background: #4BC685;
+            color: white;
+            display: none;
+            z-index: 999;
+            border-radius: 2px;
+        }
+    </style>
+    <style type="text/css">
+        #dll_exam_div input {
+            font-size: 16px;
+        }
+
+        #dll_exam_sub_div input {
+            font-size: 16px;
+        }
+
+        #Mark_menu {
+            font-size: 16px;
+        }
+
+        .recLec_pic {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1;
+            display: block;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 5px solid #fff;
+        }
+    </style>
+    <script type="text/javascript">
+        try {
+            self.moveTo(0, 0);
+            self.resizeTo(screen.availWidth, screen.availHeight);
+            self.focus();
+
+            if (top.location != self.location) {
+                top.location = self.location;
+            }
+
+        } catch (err) {
+
+        }
+        $(function () {
+
+            InitWin();
+            getNowDate();
+            getTime_use();
+            loadNavControl();
+
+            if ($("#autoSub").val() == "true") {
+                autoSubmit();
+            }
+            SetMain();
+            // ScreenCutInit();
+        });
+
+    </script>
+
+<link href="./AMEQP — 网上评卷_files/easyui.css" rel="stylesheet" type="text/css"><link href="./AMEQP — 网上评卷_files/default.css" rel="stylesheet" type="text/css"></head>
+<body>
+    <form method="post" action="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx" id="form1">
+<div class="aspNetHidden">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUKLTE4MzA1NDczNWRkw8zKbPk03p+9bFdFyKZZE5L0M93mBiGFTvqsKQ53chs=">
+</div>
+
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="2CA0AD4C">
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEdAATUvjoMnKF/7Wi4lm9tGOO3Y29Z/wCOHt5lnejpHvE//i8Uj9dNC76cBmfvoHKuk22vI4Wtfxb6mszxt4KyFOxhAb3p89Ww3xenM5gEdwJoQnvwWPkbHiRK+JH8anyNCf0=">
+</div>
+        <input name="h_isNK" type="hidden" id="h_isNK" value="False">
+        <input name="h_Nk" type="hidden" id="h_Nk" value="eHhPM2lTRThvMWVyeU1PS2ZkUVBnUTkrVzU5Z1doOTY=">
+        <input name="h_NLL" type="hidden" id="h_NLL">
+
+        <!--主体开始-->
+        <div id="Mark_container" class="w_100p h_100p container">
+
+            <!--头部开始-->
+            <div id="Mark_top" class="top_wrap">
+                <input id="iQueSN" name="iQueSN" type="hidden" value="1">
+                <input id="h_mar_outTime" name="h_mar_outTime" type="hidden" value="2026-04-02 22:10:47">
+                <input id="h_mar_posTime" name="h_mar_posTime" type="hidden" value="">
+                <div id="Mark_menu" class="mark_menu">
+                    <div id="Mark_nav" class="column_wrap">
+                        <ul class="mark_nav">
+                            <li id="mar_state_click" style="color: green;" onclick="EvaCancle()">
+                                <span id="mar_state">正评</span>
+                            </li>
+                            <li id="exam" class="nav" onclick="SelectExa()" title="点击切换阅卷【科目】">
+                                <span>科目</span>
+                            </li>
+                            <li id="question" class="nav">
+                                <span><span>试题</span><span style="color:red;">(第18（1）题)</span></span>
+                            </li>
+                            <li id="model" class="nav">
+                                <span>模式</span>
+                            </li>
+                            <li id="review" class="nav" style="display: inline-block;">
+                                <span>回评</span>
+                            </li>
+                            <li id="sign" class="nav" style="display: inline-block;">
+                                <span>标志</span>
+                            </li>
+                            <li id="postil" class="nav">
+                                <span>批注</span>
+                            </li>
+                            <li id="effect" class="nav">
+                                <span>界面</span>
+                            </li>
+                            <li id="reference" class="nav">
+                                <span>参考</span>
+                            </li>
+                            <li id="tool" class="nav">
+                                <span>更多</span>
+                            </li>
+                            <li id="present" class="nav hide">
+                                <span>返回评卷</span>
+                            </li>
+                            <li id="navEvaUp" class="nav2" title="上一份" onclick="EvaUp()">
+                                <span>上一份</span>
+                            </li>
+                            <li id="navEvaDown" class="nav2" title="下一份" onclick="EvaDown()">
+                                <span>下一份</span>
+                            </li>
+                            <li id="exit" onclick="WinClose(true)">
+                                <span style="color: red">退出</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div id="Menu_sub_wrapper" class="column_wrap">
+                        <div id="mark_nav_sub_question" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;"><ul class="mark_nav_sub_btn"><li id="mark_question_7" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,7,&quot;点击这里选择题号&quot;)">点击这里选择题号</li><li id="mark_question_1" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,1,&quot;第18（1）题&quot;)" class="obj_selected">第18（1）题</li><li id="mark_question_2" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,2,&quot;第18（2）题&quot;)">第18（2）题</li><li id="mark_question_3" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,3,&quot;第18（3）题&quot;)">第18（3）题</li><li id="mark_question_4" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,4,&quot;第19（1）题&quot;)">第19（1）题</li><li id="mark_question_5" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,5,&quot;第19（2）题&quot;)">第19（2）题</li><li id="mark_question_6" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="QuestionChange(this,6,&quot;第19（3）题&quot;)">第19（3）题</li></ul></div>
+                        <div id="mark_nav_sub_model" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;"><ul class="mark_nav_sub_btn"><li id="mark_model_0" class="obj_selected" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="ModelChange(this,0)">阅卷模式</li><li id="mark_model_1" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" onclick="ModelChange(this,1)">仲裁模式</li></ul></div>
+                        <div id="mark_nav_sub_effect" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px; font-size: 13px">
+                            <ul class="mark_nav_sub_btn">
+
+                                <li title="放大图像区域" onclick="Zoom(1)" style="padding-left: 6px; padding-right: 6px;">放 大</li>
+                                <li title="默认图像区域大小" onclick="Zoom(0)" style="padding-left: 6px; padding-right: 6px;">还 原</li>
+                                <li title="缩小图像区域" onclick="Zoom(-1)" style="padding-left: 6px; padding-right: 6px;">缩 小</li>
+
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; margin-left: 0px; padding-left: 0px; padding-right: 0px;">
+                                    <span style="font-weight: bold">(</span>
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; margin-left: 0px; padding-left: 0px; padding-right: 0px; margin-top: -1px;">
+                                    <input id="Zoom_step" class="easyui-numberspinner numberspinner-f numberbox-f textbox-f spinner-f" value="30" style="width: 55px; display: none;" data-options="min:0, increment:10"><span class="textbox numberbox spinner" style="width: 55px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon spinner-button-updown" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"><span class="spinner-arrow spinner-button-top"><span class="spinner-arrow-up"></span></span><span class="spinner-arrow spinner-button-bottom"><span class="spinner-arrow-down"></span></span></a></span><input id="_easyui_textbox_input8" type="text" class="textbox-text validatebox-text" autocomplete="off" tabindex="" placeholder="" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 27px;"><input type="hidden" class="textbox-value" value="30"></span>
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; margin-left: 0px; padding-left: 0px; padding-right: 0px;">
+                                    <span>像素</span>
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; margin-left: 5px; padding-left: 0px; padding-right: 0px;">
+                                    <input id="Zoom_img_only" name="Zoom_img_only" type="checkbox" style="cursor: pointer">
+                                    <label for="Zoom_img_only" style="cursor: pointer">仅图像</label>
+                                    <span style="font-weight: bold">)</span>
+                                </li>
+                                <li style="border: 1px dashed; margin-left: 8px; margin-right: 8px; padding-left: 0; padding-right: 0; display: inline-block; height: 25px"></li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px;">
+                                    <span style="font-weight: bold">背景色:</span>
+
+                                    <input type="radio" id="areaBgColor00" name="areaBgColor" style="cursor: pointer" value="0">
+                                    <label style="cursor: pointer; background: white" for="areaBgColor00">默认</label>
+
+                                    <input type="radio" id="areaBgColor01" name="areaBgColor" style="margin-left: 5px; cursor: pointer" value="1">
+                                    <label style="cursor: pointer; background: #fffb93" for="areaBgColor01">暖色</label>
+
+                                    <input type="radio" id="areaBgColor02" name="areaBgColor" style="margin-left: 5px; cursor: pointer" value="2">
+                                    <label style="cursor: pointer; background: #93fbff" for="areaBgColor02">冷色</label>
+
+                                    <input type="radio" id="areaBgColor03" name="areaBgColor" style="margin-left: 5px; cursor: pointer" value="3">
+                                    <label style="cursor: pointer;" for="areaBgColor03">自定义</label>
+
+                                    <span id="areaBgColor3" style="display: none">
+                                        <input id="jscolorSet" class="jscolor {valueElement:&#39;&#39;, onFineChange:&#39;jscolorSetFineChange(this)&#39;}" value="" style="width: 30px; background-image: none; background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);">
+                                        <input type="hidden" id="jscolorSetValue">
+                                    </span>
+
+                                    <label style="padding-left: 10px;">
+                                        透明度:
+                                    </label>
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px; margin-top: 0px;">
+                                    <input id="fillTrans" class="easyui-numberspinner numberspinner-f numberbox-f textbox-f spinner-f" style="width: 50px; display: none;" data-options="min:0, max:10,increment:1,value:2,onChange:function(){FillTransOnChange()}"><span class="textbox numberbox spinner" style="width: 50px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon spinner-button-updown" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"><span class="spinner-arrow spinner-button-top"><span class="spinner-arrow-up"></span></span><span class="spinner-arrow spinner-button-bottom"><span class="spinner-arrow-down"></span></span></a></span><input id="_easyui_textbox_input10" type="text" class="textbox-text validatebox-text" autocomplete="off" tabindex="" placeholder="" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 22px;"><input type="hidden" class="textbox-value" value="2"></span>
+
+                                </li>
+                                <li style="border: 1px dashed; margin-left: 8px; margin-right: 8px; padding-left: 0; padding-right: 0; height: 25px"></li>
+
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px;">
+                                    <span style="font-weight: bold">图像位置:</span>
+
+                                    <input type="radio" id="queImgPosition0" name="queImgPosition" style="cursor: pointer;" value="0">
+                                    <label style="cursor: pointer;" for="queImgPosition0">靠左</label>
+
+                                    <input type="radio" id="queImgPosition1" name="queImgPosition" style="cursor: pointer;" value="1">
+                                    <label style="cursor: pointer;" for="queImgPosition1">居中</label>
+
+                                </li>
+                                <li style="border: 1px dashed; margin-left: 8px; margin-right: 8px; padding-left: 0; padding-right: 0; height: 25px"></li>
+
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px;">
+                                    <label style="border: 0; cursor: pointer; color: black; font-weight: bold;" title="试题有多个图像区域，可设为横向排列">
+                                        <input type="checkbox" id="queImgOrientation" style="cursor: pointer;" disabled="">
+                                        多区域图像横排
+                                    </label>
+                                </li>
+                                <li style="border: 1px dashed; margin-left: 8px; margin-right: 8px; padding-left: 0; padding-right: 0; height: 25px"></li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px;">
+                                    <span style="font-weight: bold">给分间隔:</span>
+                                </li>
+
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px; margin-top: 0px;">
+
+                                    <input id="scoInterval" class="easyui-numberspinner numberspinner-f numberbox-f textbox-f spinner-f" style="width: 60px; display: none;" data-options="min:0.5, precision:1, increment:0.5,onChange:function(){SetScoInterval();}"><span class="textbox numberbox spinner" style="width: 60px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon spinner-button-updown" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"><span class="spinner-arrow spinner-button-top"><span class="spinner-arrow-up"></span></span><span class="spinner-arrow spinner-button-bottom"><span class="spinner-arrow-down"></span></span></a></span><input id="_easyui_textbox_input12" type="text" class="textbox-text validatebox-text" autocomplete="off" tabindex="" placeholder="" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 32px;"><input type="hidden" class="textbox-value" value="0.5"></span>
+                                </li>
+
+                                <li style="border: 1px dashed; margin-left: 8px; margin-right: 8px; padding-left: 0; padding-right: 0; height: 25px"></li>
+                                <li id="SizeLock" title="" onclick="SizeLock(0)" style="padding-left: 6px; padding-right: 6px; color: black;">锁 定</li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px">
+                                    <span style="font-weight: bold">(</span>
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px; margin-top: 0px;">
+                                    <input id="LockTime" class="easyui-numberspinner numberspinner-f numberbox-f textbox-f spinner-f" value="1" style="width: 55px; display: none;" data-options="min:0, increment:0.5, precision:1"><span class="textbox numberbox spinner" style="width: 55px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon spinner-button-updown" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"><span class="spinner-arrow spinner-button-top"><span class="spinner-arrow-up"></span></span><span class="spinner-arrow spinner-button-bottom"><span class="spinner-arrow-down"></span></span></a></span><input id="_easyui_textbox_input14" type="text" class="textbox-text validatebox-text" autocomplete="off" tabindex="" placeholder="" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 27px;"><input type="hidden" class="textbox-value" value="1.0"></span>
+
+                                </li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0; cursor: default; padding-left: 0px; padding-right: 0px">
+                                    <span>天</span>
+                                    <span style="font-weight: bold">)</span>
+                                </li>
+                            </ul>
+                            <input id="ImgWrapOriW" name="ImgWrapOriW" type="hidden" value="1099">
+                        </div>
+                        <div id="mark_nav_sub_sign" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;"><ul id="list_sub_sign" class="mark_nav_sub_btn"><li id="sign_3" class="sub_sign" title="图象异常" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" style="border-width:2px;border-color: rgb(255,0,0)"><span class="sign_sw">图象异常</span><input class="sign_sn" name="sign_sn" type="hidden" value="3"><input class="sign_mar" name="sign_mar" type="hidden" value="false"></li><li id="sign_5" class="sub_sign" title="答错位置" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" style="border-width:2px;border-color: rgb(255,0,255)"><span class="sign_sw">答错位置</span><input class="sign_sn" name="sign_sn" type="hidden" value="5"><input class="sign_mar" name="sign_mar" type="hidden" value="true"></li><li id="sign_6" class="sub_sign" title="优秀试卷" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" style="border-width:2px;border-color: rgb(0,196,0)"><span class="sign_sw">优秀试卷</span><input class="sign_sn" name="sign_sn" type="hidden" value="6"><input class="sign_mar" name="sign_mar" type="hidden" value="true"></li><li id="sign_8" class="sub_sign" title="典型试卷" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" style="border-width:2px;border-color: rgb(0,0,255)"><span class="sign_sw">典型试卷</span><input class="sign_sn" name="sign_sn" type="hidden" value="8"><input class="sign_mar" name="sign_mar" type="hidden" value="true"></li><li id="sign_9" class="sub_sign" title="难以评分" onmousemove="MouseMove(this)" onmouseout="MouseOut(this)" style="border-width:2px;border-color: rgb(255,128,64)"><span class="sign_sw">难以评分</span><input class="sign_sn" name="sign_sn" type="hidden" value="9"><input class="sign_mar" name="sign_mar" type="hidden" value="false"></li><li id="cancel_sign" class="cFF0000" title="取消标志" style="display: none;">取消标志</li></ul></div>
+                        <div id="mark_nav_sub_postil" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;">
+                            <div style="float: left; padding: 5px 5px 5px 0px">
+                                <table>
+                                    <tbody><tr>
+                                        <td style="padding: 2px">
+                                            <input type="radio" onclick="PostilModelChange(1)" id="postilModel1" value="1" name="postilModel" title="点击 显示常规批注 " style="cursor: pointer" checked="checked">
+                                            <label for="postilModel1" title="点击 显示常规批注 " style="cursor: pointer">
+                                                显示常规批注
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 2px">
+                                            <input type="radio" onclick="PostilModelChange(2)" id="postilModel2" value="2" name="postilModel" title="点击 显示评分批注 " style="cursor: pointer">
+                                            <label for="postilModel2" title="点击 显示评分批注 " style="cursor: pointer">
+                                                显示评分批注
+                                            </label>
+                                        </td>
+                                    </tr>
+                                </tbody></table>
+                            </div>
+                            <ul id="postilModel1Control" class="mark_nav_sub_btn" style="padding: 8px;">
+                                <li title="在卷面上打钩" id="postilLi1" onclick="Postil(this,1)">打 钩</li>
+                                <li title="在卷面上打叉" id="postilLi2" onclick="Postil(this,2)">打 叉</li>
+                                <li title="在卷面上半对" id="postilLi8" onclick="Postil(this,8)">半 对</li>
+                                <li title="在卷面上划线" id="postilLi3" onclick="Postil(this,3)">划 线</li>
+                                <li title="在卷面上画框" id="postilLi4" onclick="Postil(this,4)">画 框</li>
+                                <li title="在卷面上输入文字" id="postilLi5" onclick="Postil(this,5)">输入文字</li>
+                            </ul>
+
+                            <div id="postilModel2Control" style="float: left; padding: 8px; display: none"></div>
+                            <ul id="changeBox" class="mark_nav_sub_btn" style="padding: 8px 0px 8px 8px; display: none;">
+                                <li title="上一题" onclick="ChangeToPre()" style="margin-left: 5px; color: blue;">上一小题</li>
+                                <li title="下一题" onclick="ChangeToNext()" style="color: blue;">下一小题</li>
+                            </ul>
+
+                            <ul class="mark_nav_sub_btn" style="padding: 8px">
+                                
+                                <li title="删除最后一个批注" style="margin-left: 5px; color: red;" onclick="postilArrDeleteLast(true)">删除</li>
+                                <li title="删除当前所在题目" style="margin-left: 5px; color: red;" onclick="postilArrDeleteQue(true)">删除所在题</li>
+                                <li title="删除所有批注" onclick="postilArrDeleteAll(true)" style="color: red;">清空</li>
+
+                            </ul>
+
+                            <div id="postil_to_top" class="postil_to_top">鼠标跟随</div>
+
+                        </div>
+                        <div id="mark_nav_sub_reference" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;">
+                            <ul id="list_sub_reference" class="mark_nav_sub_btn">
+                                <li id="Set_ref" class="annotation_ref" title="设置为参考试卷" style="display: none;">设为参考试卷
+                                </li>
+                                <li id="Get_refList" title="参考试卷列表" onclick="GetRefList()" style="margin-left: 10px;">查看参考试卷列表
+                                </li>
+                            </ul>
+                        </div>
+                        <div id="mark_nav_sub_review" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px; font-size: 15px">
+                            <ul class="mark_nav_sub_btn">
+                                <li id="EvaHistory" title="历史评卷列表" onclick="EvaHistory()" style="margin-left: 10px">历史评卷列表</li>
+                                <li id="EvaDown" title="前一份评卷" onclick="ChangePage(&#39;prev&#39;)" style="margin-left: 10px">«向前</li>
+                                <li style="background: none !important; color: #2E2E2E !important; border: 0;padding: 5px 2px;">
+                                    第&nbsp;<label id="L_index" class="col_red">0</label>&nbsp;份 / 
+                                    共&nbsp;<label id="L_total" class="col_red">0</label>&nbsp;份
+                                </li>
+
+                                <li id="EvaUp" title="后一份评卷" onclick="ChangePage(&#39;next&#39;)">向后»</li>
+
+                                <li style="background: none !important; color: #2E2E2E !important;
+                                             border: 0; padding-left: 0px; padding-right: 0px; padding-top: 0px; margin-left: 10px">
+                                    <input id="EvaAuto" class="easyui-textbox textbox-f" data-options="prompt:&#39;按回车跳转...&#39;,validType:&#39;postiveInteger&#39;" style="width: 100px; display: none;"><span class="textbox" style="width: 100px;"><input id="_easyui_textbox_input1" type="text" class="textbox-text validatebox-text textbox-prompt" autocomplete="off" tabindex="" placeholder="按回车跳转..." style="margin: 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 98px;"><input type="hidden" class="textbox-value" value=""></span>
+                                </li>
+                                <li id="evaAutoEnter" onclick="EvaEnter()" style="margin-left: 2px;">跳转</li>
+                                <li id="EvaCancle" title="取消回评" onclick="EvaCancle()" style="margin-left: 30px; color: red;">点击取消回评</li>
+                            </ul>
+                        </div>
+                        <div id="mark_nav_sub_tool" class="mark_nav_sub" style="padding-bottom: 3px; padding-top: 3px;">
+                            <ul class="mark_nav_sub_btn">
+                                <li id="GoAutoSub" onclick="GoAutoSub()" title="点击【启用】压力测试模式（自动提交）" style="display: none;">启用压力测试</li>
+                                <li id="autoPress" style="display: inline-block;" onclick="PressCheck()" title="点击【启用】快速评分模式">启用快速评分</li>
+                                <li id="EvaCheck" title="评卷查询" onclick="EvaCheck()" style="display: inline-block;">评卷查询</li>
+                                <li title="查看个人消息列表" onclick="OpenMesWin()">消息列表</li>
+                                <li title="查看试题评分标准" onclick="OpenQueScoringCriteriaWin()">评分标准</li>
+                                
+                                <li id="lookAnswer" style="margin-left: 20px; display:none;" onclick="LookAnswer()">浏览全卷
+                                </li>
+                                <li style="display:none;" onclick="LoadStuImage()">下载学生答卷
+                                </li>
+                                <li style="margin-left: 20px" onclick="ScreenCutOpen()">屏幕截图
+                                </li>
+                                <li id="Li1" style="background: none !important; border: 0; padding-top: 6px;" title="点击下载截图工具，并根据说明进行工具的安装注册！">
+                                    <a href="javascript:void(0)" onclick="ScreenCutLoad()" style="text-decoration: underline; font-weight: normal; color: blue">下载截图工具</a>
+                                </li>
+                                <li id="ScreenCutInfo" style="background: none; color: red; border: 0; display: none">（系统提示：请点此&nbsp;<a href="javascript:void(0)" onclick="LoadScreenCut()">安装</a>&nbsp;截图工具，安装完成后退出评卷并重新进入即可！）
+                                </li>
+
+                            </ul>
+                            <input id="autoSub" name="autoSub" type="hidden" value="false">
+                        </div>
+                    </div>
+                </div>
+                <div id="ref_prompt" class="ref_prompt" style="display: none;">您正在评的是参考试卷！</div>
+            </div>
+            <!--头部结束-->
+
+            <!--内容主体开始-->
+            <div id="Mark_main" class="main_wrap" style="height: 280.25px;">
+                <div id="Stamp_sign" class="stamp_sign" style="border-color: rgb(0, 196, 0); color: rgb(0, 196, 0); display: none;"></div>
+                <div id="Stamp_ref" class="stamp_sign" style="display: none;">参考试卷</div>
+                <div id="Img_btn" class="img_btn" style="top: 10px; left: 5px;">
+                    
+
+                    <span class="img_btn_Separate"></span>
+                    <span class="img_btn_span img_btn_sign img_btn_sign_1" id="tool_sign_3" onclick="sub_tool_sign(this)" title="标志试卷-图像异常" value="3">异常</span>
+                    <span class="img_btn_span img_btn_sign img_btn_sign_2" id="tool_sign_6" onclick="sub_tool_sign(this)" title="标志试卷-优秀试卷" value="6">优秀</span>
+                    
+                    <span class="img_btn_span img_btn_sign img_btn_sign_4" id="tool_sign_8" onclick="sub_tool_sign(this)" title="标志试卷-典型试卷" value="8">典型</span>
+                    
+                    
+                    <span class="img_btn_Separate"></span>
+                    <span class="img_btn_span img_btn_reference" onclick="set_reference()" id="tool_reference" title="参考试卷-设为参考试卷">参考</span>
+
+                    <span class="img_btn_Separate"></span>
+                    <span class="img_btn_span img_btn_image" onclick="Zoom(1)" title="界面调整-放大">放大</span>
+                    <span class="img_btn_span img_btn_image" onclick="Zoom(0)" title="界面调整-还原">还原</span>
+                    <span class="img_btn_span img_btn_image" onclick="Zoom(-1)" title="界面调整-缩小">缩小</span>
+                    <span class="img_btn_span img_btn_image" id="tool_rotate" title="界面调整-旋转" style="display: none;">旋转</span>
+                    <span class="img_btn_span img_btn_image" onclick="AreaBgColorToolSet()" title="界面调整-填充背景色">背景</span>
+                    <span class="img_btn_Separate"></span>
+                    <span class="img_btn_span img_btn_refresh" onclick="ReaLoad(true)" title="初始化该试题的评卷界面">刷新</span>
+                </div>
+                <div id="Img_wrap" class="img_wrap" onselectstart="return false;" oncopy="return false;" style="width: 1099px; height: auto; top: 0px; left: 148px; margin-left: 0px;">
+                <div id="img_box_1_1" class="img_box" style="color: red; width: 1097px; height: 797px;" defaultwidth="1097"><img id="tmpImg_1_1" src="./AMEQP — 网上评卷_files/transparent.png"><img id="ansImg_1_1" class="ansImg" alt="" src="./AMEQP — 网上评卷_files/历史_1666814813_4011019040217_1.png" style="position: absolute; top: -1230.04px; left: -51.3489px; width: 3087px; height: auto;"></div></div>
+                <div id="Img_wrap_fill" class="img_wrap_fill" onselectstart="return false;" oncopy="return false;" style="width: 1099px; top: 0px; left: 148px; margin-left: 0px; height: 799px; background-color: rgb(255, 255, 255); opacity: 0;">
+                <div id="img_box_fill_1_1" class="img_box_fill" defaultwidth="1099" style="width: 1099px; height: 799px;"></div></div>
+                <div id="Img_wrap_postil" class="img_wrap_postil" onselectstart="return false;" oncopy="return false;" style="width: 1099px; top: 0px; left: 148px; margin-left: 0px; height: 799px;">
+                <div id="img_box_postil_1_1" class="img_box_postil" defaultwidth="1099" style="width: 1099px; height: 799px; cursor: auto;"></div></div>
+                
+                <div id="submit_box" class="submit_box" style="position: absolute; left: 1262px; top: 133px;">
+                    <div id="autoSubmitTit" class="hide" style="color: red; font: 800 16px/40px &#39;Verdana&#39;,&#39;宋体&#39;; cursor: pointer;" onclick="StopAutoSubmit()" title="点击返回评卷">
+                        [压力测试]
+                    </div>
+                    <div id="reviewTit" class="hide" style="color: red; font: 800 16px/30px &#39;Verdana&#39;,&#39;宋体&#39;; cursor: pointer;" onclick="EvaCancle()" title="点击返回评卷">
+                        [回评状态]
+                    </div>
+                    <fieldset class="mark_fld">
+                        <legend class="mark_leg">提交</legend>
+                        <div class="txt_que_wrap">
+                            <input id="btn_submit" type="button" value="提交" class="mark_btn" style="width: 54px; font-weight: bold;" onclick="OnSubmit(1)" tabindex="1">
+                            <span onclick="OtherSubmit()" id="btn_allSco" class="btn_allSco" title="点击显示 满分提交、零分提交 ">▼</span>
+                        </div>
+                        <div id="oneKeySubmit" style="display: none;">
+                            <span>
+                                <input id="btn_full" type="button" value="设为满分" class="mark_btn" style="z-index: 80; margin-top: -1px; width: 100%;">
+                            </span>
+                            <span>
+                                <input id="btn_zero" type="button" value="设为零分" class="mark_btn" style="z-index: 80; margin-top: -1px; width: 100%;">
+                            </span>
+                        </div>
+                    </fieldset>
+                    <input class="boxPosX" type="hidden" value="1262">
+                    <input class="boxPosY" type="hidden" value="133">
+                </div>
+                
+                <div id="Show_box" class="show_box" style="left: 1245px; top: 0px;">
+                    <input id="queVal" name="queVal" class="queVal" value="0.0" readonly="readonly" tabindex="-1">
+                    <input id="queVal_old" name="queVal_old" type="hidden" value="0.0">
+                    <input id="queSco_all" name="queSco_all" type="hidden" value="6">
+                </div>
+                
+                <div id="Other_mar" class="other_mar" style="left: 1248px; top: 53px; display: none;"></div>
+                
+                <div id="Show_other" class="mouse_menu_r" style="width: 130px; display: none;">
+                    <span>显示考生信息面板</span>
+                    <span>显示数字小键盘</span>
+                </div>
+            <div id="sco_box_1" class="sco_box" style="display: inline-block; position: absolute; left: 1262px; top: 63px;"><fieldset class="mark_fld" style="width: 100px; border-color: blue;"><legend class="mark_leg" title="第18（1）题(6.0分)" style="color: blue;">第18（1）题(6.0分)</legend><div class="txt_que_wrap"><input id="txt_que_1" maxsco="6.0" name="txt_que_1" type="text" tabindex="0" class="mark_tbx"><input id="max_sco_1" class="maxSco" type="hidden" value="6.0"><span id="scoList_btn_1" class="scoList_btn" title="点击显示按钮给分列表">»</span><div></div></div></fieldset><span id="txt_msg_1" class="txt_msg" style="display: none; width: 100px;">本题尚未给分<input id="MarQueSubSco_1" name="MarQueSubSco_1" type="hidden" value="5"></span><input class="boxPosX" type="hidden" value="1262"><input class="boxPosY" type="hidden" value="63"><input class="marDefScore" type="hidden" value="A"></div><div id="Mark_scoList_1" class="mark_scoList" style="display: none;"><span class="sco_list" style="" id="rdo_que_1_0" name="que_det_sco_1" maxsco="6.0" value="0.0" title="0.0分">0.0分</span><span class="sco_list" style="" id="rdo_que_1_1" name="que_det_sco_1" maxsco="6.0" value="0.5" title="0.5分">0.5分</span><span class="sco_list" style="" id="rdo_que_1_2" name="que_det_sco_1" maxsco="6.0" value="1.0" title="1.0分">1.0分</span><span class="sco_list" style="" id="rdo_que_1_3" name="que_det_sco_1" maxsco="6.0" value="1.5" title="1.5分">1.5分</span><span class="sco_list" style="" id="rdo_que_1_4" name="que_det_sco_1" maxsco="6.0" value="2.0" title="2.0分">2.0分</span><span class="sco_list" style="" id="rdo_que_1_5" name="que_det_sco_1" maxsco="6.0" value="2.5" title="2.5分">2.5分</span><span class="sco_list" style="" id="rdo_que_1_6" name="que_det_sco_1" maxsco="6.0" value="3.0" title="3.0分">3.0分</span><span class="sco_list" style="" id="rdo_que_1_7" name="que_det_sco_1" maxsco="6.0" value="3.5" title="3.5分">3.5分</span><span class="sco_list" style="" id="rdo_que_1_8" name="que_det_sco_1" maxsco="6.0" value="4.0" title="4.0分">4.0分</span><span class="sco_list" style="" id="rdo_que_1_9" name="que_det_sco_1" maxsco="6.0" value="4.5" title="4.5分">4.5分</span><span class="sco_list obj_selected" style="" id="rdo_que_1_10" name="que_det_sco_1" maxsco="6.0" value="5.0" title="5.0分">5.0分</span><span class="sco_list" style="" id="rdo_que_1_11" name="que_det_sco_1" maxsco="6.0" value="5.5" title="5.5分">5.5分</span><span class="sco_list" style="" id="rdo_que_1_12" name="que_det_sco_1" maxsco="6.0" value="6.0" title="6.0分">6.0分</span></div></div>
+            <!--内容主体结束-->
+
+            <!--脚部开始-->
+            <div id="Mark_foot" class="foot_wrap" style="padding-left: 5px;">
+                <div class="column_wrap">
+                    <ul id="msg_other" class="ul_flo_l" style="font-weight: bold; font-size: 15px;">
+                        
+                        <li>【试题】<span id="mar_question" class="span_in">第18（1）题</span></li>
+                        <li>【密号】<span id="secNo" class="span_in">-18602788</span></li>
+                        <li>【考生】<span id="stuName" class="span_in">[******]</span></li>
+                        <li>【评卷量】<span id="postCount" class="span_in">3</span></li>
+                        <li>【速度】<span id="postSpeed" class="span_in">99.31秒/份</span></li>
+                        <li>【平均分】<span id="postAvg" class="span_in">2.67分</span></li>
+                        <li>【用时】<span id="uTime" class="span_in">00:03:53</span></li>
+                        <li><span id="uTimeMarkTimeOutControl"></span></li>
+                    </ul>
+
+                    <input id="iTeaSN" name="iTeaSN" type="hidden" value="23430">
+                    <input id="iTeaCode" name="iTeaCode" type="hidden" value="15969036682">
+                    <input id="iTeaName" name="iTeaName" type="hidden" value="杨旭">
+                    <input id="h_signEnb" name="h_signEnb" type="hidden" value="0">
+                    <input id="h_sign_sigSN" name="h_sign_sigSN" type="hidden" value="0">
+                    <input id="h_signHandle" name="h_signHandle" type="hidden" value="0">
+
+                    <input id="h_isMutiMark" name="h_isMutiMark" type="hidden" value="">
+                    <input id="h_imgSec" name="h_imgSec" type="hidden" value="false">
+                    <input id="h_markDirectEnable" name="h_markDirectEnable" type="hidden" value="0">
+                    <input id="h_marQuePostilExist" name="h_marQuePostilExist" type="hidden" value="0">
+
+                    <input id="h_refEnable" name="h_refEnable" type="hidden" value="0">
+                    <input id="h_turnMarked" name="h_turnMarked" type="hidden" value="false">
+
+                    <input id="Page" name="Page" type="hidden" value="1">
+                    <input id="Count" name="Count" type="hidden" value="0">
+                </div>
+            </div>
+            <!--脚部结束-->
+
+            <div id="Message_box" class="mes_box" style="bottom: 36.75px;">
+                <div id="MesTit" class="mes_tit" style="display: block;">
+                    <span id="NewMes" style="font-size: 30px">您有<label id="mes_count" style="color: red;">1</label>条新信息</span>
+                    <span></span>
+                </div>
+                <div id="MesCon" class="mes_con"></div>
+                <div id="MesFoot" class="mes_tit">
+                    <input id="mesPage" name="mesPage" type="hidden" value="1">
+                    <span><a href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls: &#39;icon-add&#39;,plain:false" onclick="ShowMesWin(&quot;Add&quot;,0)" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">发送消息</span><span class="l-btn-icon icon-add">&nbsp;</span></span></a></span>
+                    <span><a href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls: &#39;icon-templet&#39;,plain:false" onclick="LoadMesData(false, true)" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">获取更多历史消息</span><span class="l-btn-icon icon-templet">&nbsp;</span></span></a></span>
+                    <span style="float: right;"><a href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls: &#39;icon-reload&#39;,plain:false" onclick="LoadMesData(true)" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">刷新</span><span class="l-btn-icon icon-reload">&nbsp;</span></span></a>
+                        <a href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls: &#39;icon-remove&#39;,plain:false" onclick="HideWin()" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">缩小</span><span class="l-btn-icon icon-remove">&nbsp;</span></span></a>
+                        <a href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls: &#39;icon-cancel&#39;,plain:false" onclick="HideWin(true)" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a></span>
+                </div>
+            </div>
+
+            <div id="tool_rotate_menu" class="mouse_menu_r" style="width: 100px; padding: 5px; border-radius: 5px; display: none;"></div>
+
+            
+
+            
+
+            
+
+            
+
+            
+            
+
+            
+            
+            
+
+        <div id="Mark_sub_r" class="mouse_menu_r" style="width: 175px; display: none;"><span class="set_panel_float obj_selected">启用浮动效果<label style="color:red;">[所有面板]</label></span><span class="set_all_float obj_selected" style="display:none">浮动设置运用到所有面板</span></div><div id="Mark_panel_r_1" class="mouse_menu_r" style="width: 174px; padding: 5px; display: none;"><span id="btn_sty_1_A" class="set_btn_sty">按钮 - 水平排列</span><span id="btn_sty_1_B" class="set_btn_sty">按钮 - 垂直排列</span><span id="btn_sty_1_C" class="set_btn_sty obj_selected">按钮 - 文本框</span><div class="blank" style="margin-top:5px;margin-bottom:5px"></div><span class="set_panel_float obj_selected">启用浮动效果<label style="color:red;">[所有面板]</label></span><span class="set_all_float obj_selected" style="display:none;">浮动设置运用到所有面板</span></div></div>
+        <!--主体结束-->
+    </form>
+
+    <!--不提交变量-->
+    <input id="iPrjSN" name="iPrjSN" type="hidden" value="">
+    <input id="iDbSN" name="iDbSN" type="hidden" value="">
+    <input id="h_mar_state" name="h_mar_state" type="hidden" value="Z">
+    <input id="h_load_state" name="h_load_state" type="hidden">
+    <input id="sModel" name="sModel" type="hidden" value="B">
+    <input id="sAuthStr" name="sAuthStr" type="hidden" value="">
+    <select id="history_list" style="display: none"></select>
+    <input id="signOn" name="signOn" type="hidden" value="false">
+    <input id="markEnb" name="markEnb" type="hidden" value="true">
+    <input id="iScrollTop" name="iScrollTop" type="hidden" value="0">
+    <input id="pImage" name="pImage" type="hidden" value="D:\AllcomSoft\AMEQP\Image\">
+    <input id="pathImageHost" name="pathImageHost" type="hidden" value="">
+    <input id="splitImage" name="splitImage" type="hidden" value="False">
+
+<div class="panel combo-p panel-htop" style="position: absolute; z-index: 10; display: none;"><div class="combo-panel panel-body panel-body-noheader" title="" id=""><div id="dll_sca_easyui_combobox_i1_0" class="combobox-item">=</div><div id="dll_sca_easyui_combobox_i1_1" class="combobox-item">&gt;</div><div id="dll_sca_easyui_combobox_i1_2" class="combobox-item">&lt;</div><div id="dll_sca_easyui_combobox_i1_3" class="combobox-item combobox-item-selected">≥</div><div id="dll_sca_easyui_combobox_i1_4" class="combobox-item">≤</div></div></div><div class="panel combo-p panel-htop" style="position: absolute; z-index: 10; display: none;"><div class="combo-panel panel-body panel-body-noheader" title="" id=""><div id="dll_sca_2_easyui_combobox_i2_0" class="combobox-item">=</div><div id="dll_sca_2_easyui_combobox_i2_1" class="combobox-item">&gt;</div><div id="dll_sca_2_easyui_combobox_i2_2" class="combobox-item">&lt;</div><div id="dll_sca_2_easyui_combobox_i2_3" class="combobox-item">≥</div><div id="dll_sca_2_easyui_combobox_i2_4" class="combobox-item combobox-item-selected">≤</div></div></div><div class="panel window panel-htop" style="display: none; width: 700px; left: 406px; top: 93px;"><div class="panel-header panel-header-noborder window-header" style="width: 688px;"><div class="panel-title">New Dialog</div><div class="panel-tool"><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="hisWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="closed:true" style="padding: 5px; overflow: auto; width: 688px; height: 519px;" title="">
+
+                <div id="marHistory_tb" class="datagrid-toolbar" style="padding-bottom: 5px;">
+                    <table>
+                        <tbody><tr>
+                            <td>
+                                密号：<input id="marHistory_sKey" class="easyui-textbox textbox-f" data-options="prompt:&#39;密号&#39;,width:&#39;150px&#39;" textboxname="sKey" style="display: none;"><span class="textbox" style="width: 150px;"><input id="_easyui_textbox_input2" type="text" class="textbox-text validatebox-text textbox-prompt" autocomplete="off" tabindex="" placeholder="密号" style="margin: 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 148px;"><input type="hidden" class="textbox-value" name="sKey" value=""></span>
+                            </td>
+                            <td class="w_s"></td>
+                            <td>分数：<select id="dll_sca" data-options="editable:false" class="easyui-combobox combobox-f combo-f textbox-f" style="width: 45px; color: red; display: none;">
+                                <option value="=">=</option>
+                                <option value="&gt;">&gt;</option>
+                                <option value="&lt;">&lt;</option>
+                                <option value="&gt;=" selected="selected">≥</option>
+                                <option value="&lt;=">≤</option>
+                            </select><span class="textbox combo" style="width: 45px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon combo-arrow" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"></a></span><input id="_easyui_textbox_input5" type="text" class="textbox-text validatebox-text validatebox-readonly" autocomplete="off" tabindex="" readonly="" placeholder="可输入关键字筛选" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 17px;"><input type="hidden" class="textbox-value" name="" value="&gt;="></span>
+                                <input id="ipt_score" class="easyui-textbox textbox-f" data-options="validType:&#39;intOrFloat&#39;" style="width: 50px; display: none;"><span class="textbox" style="width: 50px;"><input id="_easyui_textbox_input3" type="text" class="textbox-text validatebox-text textbox-prompt" autocomplete="off" tabindex="" placeholder="" style="margin: 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 48px;"><input type="hidden" class="textbox-value" value=""></span>
+                                <span style="font-weight: bold;">~</span>
+                                <select id="dll_sca_2" data-options="editable:false" class="easyui-combobox combobox-f combo-f textbox-f" style="width: 45px; color: red; display: none;">
+                                    <option value="=" selected="selected">=</option>
+                                    <option value="&gt;">&gt;</option>
+                                    <option value="&lt;">&lt;</option>
+                                    <option value="&gt;=">≥</option>
+                                    <option value="&lt;=" selected="selected">≤</option>
+                                </select><span class="textbox combo" style="width: 45px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon combo-arrow" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"></a></span><input id="_easyui_textbox_input6" type="text" class="textbox-text validatebox-text validatebox-readonly" autocomplete="off" tabindex="" readonly="" placeholder="可输入关键字筛选" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 17px;"><input type="hidden" class="textbox-value" name="" value="&lt;="></span>
+                                <input id="ipt_score_2" class="easyui-textbox textbox-f" data-options="validType:&#39;intOrFloat&#39;" style="width: 50px; display: none;"><span class="textbox" style="width: 50px;"><input id="_easyui_textbox_input4" type="text" class="textbox-text validatebox-text textbox-prompt" autocomplete="off" tabindex="" placeholder="" style="margin: 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 48px;"><input type="hidden" class="textbox-value" value=""></span>
+                            </td>
+                            <td style="width: 20px;"></td>
+                            <td>
+                                <a id="marHistorySearch" href="http://47.106.209.135/AMEQP/Webroot/mar/mar_mark.aspx#" class="easyui-linkbutton l-btn l-btn-small" iconcls="icon-search" onclick="GetMarkHistory()" group=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">查找</span><span class="l-btn-icon icon-search">&nbsp;</span></span></a>
+                            </td>
+                        </tr>
+                    </tbody></table>
+                </div>
+                <table id="marHistory"></table>
+                
+            </div><div id="hisWinBtn" class="dialog-button" style="width: 688px;">
+                    <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-user_edit&#39;" onclick="MarkBackOne()" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">回评</span><span class="l-btn-icon icon-user_edit">&nbsp;</span></span></a>
+                    <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-cancel&#39;" onclick="javascript:$(&quot;#hisWin&quot;).dialog(&quot;close&quot;);" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a>
+                </div></div><div class="window-shadow" style="display: none; left: 406px; top: 93px; width: 700px; height: 600px;"></div><div class="window-mask" style="display:none"></div><div class="panel window panel-htop" style="display: none; width: 550px; left: 481px; top: 168px;"><div class="panel-header panel-header-noborder window-header" style="width: 538px;"><div class="panel-title">New Dialog</div><div class="panel-tool"><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="refWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="closed:true" style="padding: 5px; overflow: auto; width: 538px; height: 411px;" title="">
+                <table id="refList"></table>
+                <div id="refWinBtn">
+                    <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-start&#39;" onclick="LoadRef()" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">查看</span><span class="l-btn-icon icon-start">&nbsp;</span></span></a>
+                    <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-cancel&#39;" onclick="javascript:$(&quot;#refWin&quot;).dialog(&quot;close&quot;);" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a>
+                </div>
+            </div></div><div class="window-shadow" style="display: none; left: 481px; top: 168px; width: 550px; height: 450px;"></div><div class="panel window panel-htop" style="display: none; width: 900px; left: 306px; top: 108px;"><div class="panel-header panel-header-noborder window-header" style="width: 888px;"><div class="panel-title">New Dialog</div><div class="panel-tool"><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="checkWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="closed:true,buttons:&#39;#checkWinBtn&#39;" style="overflow: hidden; width: 888px; height: 489px;" title="">
+                
+            </div><div id="checkWinBtn" class="dialog-button" style="width: 888px;">
+                    <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-cancel&#39;" onclick="javascript:$(&quot;#checkWin&quot;).dialog(&quot;close&quot;);" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a>
+                </div></div><div class="window-shadow" style="display: none; left: 306px; top: 108px; width: 900px; height: 570px;"></div><div class="panel window panel-htop" style="display: none; width: 880px; left: 316px; top: 93px;"><div class="panel-header panel-header-noborder window-header" style="width: 868px;"><div class="panel-title">New Dialog</div><div class="panel-tool"><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="mesEditWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="closed:true" style="overflow: hidden; width: 868px; height: 561px;" title="">
+            </div></div><div class="window-shadow" style="display: none; left: 316px; top: 93px; width: 880px; height: 600px;"></div><div class="panel window panel-htop" style="display: none; width: 500px; left: 70px; top: 48px; z-index: 9002;"><div class="panel-header panel-header-noborder window-header" style="width: 488px;"><div class="panel-title"><span style="font-size:16px;">选择考试与科目</span></div><div class="panel-tool"><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="ExaDllWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="title:&#39;选择考试与科目&#39;, closed:true,buttons:&#39;#ExaDllBtn&#39;" style="line-height: 30px; padding: 10px; overflow: hidden; top: 48px; left: 70px; font-size: 16px; width: 488px; height: 139px;" title="">
+                <div style="margin: auto">
+                    <div style="padding: 5px 5px 10px 5px;" id="dll_exam_div">
+                        项目：<input id="dll_exam" type="text" style="width: 390px; font-size: 16px; display: none;" class="combobox-f combo-f textbox-f"><span class="textbox combo" style="width: 390px; height: 30px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon combo-arrow" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"></a></span><input id="_easyui_textbox_input15" type="text" class="textbox-text validatebox-text validatebox-readonly" autocomplete="off" tabindex="" readonly="" placeholder="可输入关键字筛选" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 362px;"><input type="hidden" class="textbox-value" name="" value="2602"></span>
+                    </div>
+                    <div style="padding: 10px 5px 5px 5px;" id="dll_exam_sub_div">
+                        科目：<input id="dll_exam_sub" type="text" style="width: 390px; font-size: 16px; display: none;" class="combobox-f combo-f textbox-f"><span class="textbox combo" style="width: 390px; height: 30px;"><span class="textbox-addon textbox-addon-right" style="right: 0px; top: 0px;"><a href="javascript:;" class="textbox-icon combo-arrow" icon-index="0" tabindex="-1" style="width: 26px; height: 28px;"></a></span><input id="_easyui_textbox_input16" type="text" class="textbox-text validatebox-text validatebox-readonly" autocomplete="off" tabindex="" readonly="" placeholder="可输入关键字筛选" style="margin: 0px 26px 0px 0px; padding-top: 0px; padding-bottom: 0px; height: 28px; line-height: 28px; width: 362px;"><input type="hidden" class="textbox-value" name="" value="26012"></span>
+                    </div>
+                </div>
+            </div><div id="ExaDllBtn" class="dialog-button" style="width: 488px;">
+                <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-cancel&#39;" onclick="javascript:$(&quot;#ExaDllWin&quot;).dialog(&quot;close&quot;);" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a>
+            </div></div><div class="window-shadow" style="display: none; left: 70px; top: 48px; width: 500px; height: 220px; z-index: 9001;"></div><div class="window-mask" style="display: none; z-index: 9000; position: fixed;"></div><div class="panel window panel-htop" style="display: none; width: 380px; left: 566px; top: 243px;"><div class="panel-header panel-header-noborder window-header" style="width: 368px;"><div class="panel-title">New Dialog</div><div class="panel-tool"><a href="javascript:;" class="panel-tool-collapse"></a><a href="javascript:;" class="panel-tool-max"></a><a href="javascript:;" class="panel-tool-close"></a></div></div><div id="scoringCriteriaWin" class="easyui-dialog panel-body panel-body-noborder window-body" data-options="closed:true,resizable:true,collapsible:true,maximizable:true,draggable:true,modal:false,buttons:&#39;#scoringCriteriaBtn&#39;" style="padding: 5px; overflow: auto; width: 368px; height: 219px;" title="">
+                <div id="queMarkStandard" style="line-height: 18px"></div>
+            </div><div id="scoringCriteriaBtn" class="dialog-button" style="width: 368px;">
+                <a href="javascript:;" class="easyui-linkbutton l-btn l-btn-small" data-options="iconCls:&#39;icon-cancel&#39;" onclick="javascript:$(&quot;#scoringCriteriaWin&quot;).dialog(&quot;close&quot;);" group="" id=""><span class="l-btn-left l-btn-icon-left"><span class="l-btn-text">关闭</span><span class="l-btn-icon icon-cancel">&nbsp;</span></span></a>
+            </div></div><div class="window-shadow" style="display: none; left: 566px; top: 243px; width: 380px; height: 300px;"></div><div class="panel combo-p panel-htop" style="position: absolute; z-index: 10; display: none;"><div class="combo-panel panel-body panel-body-noheader" title="" id=""><div id="dll_exam_easyui_combobox_i3_0" class="combobox-item"><span style="font-size:16px">--请选择--</span></div><div id="dll_exam_easyui_combobox_i3_1" class="combobox-item combobox-item-selected"><span style="font-size:16px">九年级中考复习模拟（2604）</span></div></div></div><div class="panel combo-p panel-htop" style="position: absolute; z-index: 10; display: none;"><div class="combo-panel panel-body panel-body-noheader" title="" id=""><div id="dll_exam_sub_easyui_combobox_i4_0" class="combobox-item"><span style="font-size:16px">--请选择--</span></div><div id="dll_exam_sub_easyui_combobox_i4_1" class="combobox-item combobox-item-selected"><span style="font-size:16px">历史</span></div></div></div></body></html>

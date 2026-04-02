@@ -5,13 +5,16 @@ let reviewState = {
   isActive: false,           // 是否正在阅卷
   selectedArea: null,        // 选定的阅卷区域
   prompt: '',                // 评分提示词
-  platform: 'zxw',           // 当前平台: zxw(智学网) / dnjy(懂你教育)
+  platform: 'zxw',           // 当前平台: zxw(智学网) / dnjy(懂你教育) / ameqp(AMEQP)
   currentTabId: null,        // 当前操作的标签页ID
   lastCaptureTime: 0,        // 上次截图时间
   retryCount: 0,             // 重试次数
   maxRetries: 3,             // 最大重试次数
   limit: 0                   // 阅卷次数限制（0=不限制）
 };
+
+// AMEQP: OnSubmit(1) 提交后自动AJAX加载下一份，不需要手动点"下一份"
+const AUTO_NEXT_PLATFORMS = ['ameqp'];
 
 // 阅卷记录
 let reviewRecords = [];
@@ -20,6 +23,7 @@ let sessionStartTime = null;
 const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
 const SUBMIT_DELAY = 3000;         // 提交后等待时间（包含弹窗处理）
 const NEXT_PAGE_DELAY = 2000;      // 切换下一份的等待时间
+const AMEQP_PAGE_LOAD_DELAY = 5000; // AMEQP 提交后等待 AJAX 完成（含服务器响应时间）
 
 // ============ 工具函数 ============
 
@@ -204,7 +208,9 @@ async function executeReviewCycle() {
     return;
   }
   
-  log('执行阅卷周期...', `(${reviewRecords.length + 1}/${reviewState.limit || '∞'})`);
+  log('═══════════════════════════════════════════════');
+  log(`执行阅卷周期 (${reviewRecords.length + 1}/${reviewState.limit || '∞'}) platform="${reviewState.platform}" tabId=${reviewState.currentTabId}`);
+  log('═══════════════════════════════════════════════');
   
   try {
     // 1. 检查配置
@@ -275,22 +281,52 @@ async function executeReviewCycle() {
     
     // 9. 填分并提交
     broadcastStatus(`填入分数: ${score}，提交中...`);
-    await fillScoreAndSubmit(reviewState.currentTabId, score);
+    const submitResult = await fillScoreAndSubmit(reviewState.currentTabId, score);
     if (!reviewState.isActive) return;
     
     // 10. 重置重试计数
     reviewState.retryCount = 0;
     
-    // 11. 等待后点击下一份
-    broadcastStatus('提交成功，准备下一份...');
-    await delay(SUBMIT_DELAY);
-    if (!reviewState.isActive) return;
+    // 11. 根据平台决定是否需要手动点"下一份"
+    const isAutoNext = AUTO_NEXT_PLATFORMS.includes(reviewState.platform);
     
-    await clickNextButton(reviewState.currentTabId);
-    if (!reviewState.isActive) return;
+    if (isAutoNext) {
+      // AMEQP: 提交后自动加载下一份，等待 AJAX 完成后再检测弹窗
+      log(`AMEQP: 提交成功，等待 ${AMEQP_PAGE_LOAD_DELAY}ms (AJAX响应)...`);
+      broadcastStatus(`提交成功，等待页面加载(${AMEQP_PAGE_LOAD_DELAY/1000}秒)...`);
+      await delay(AMEQP_PAGE_LOAD_DELAY);
+      if (!reviewState.isActive) return;
+      
+      // AJAX 应该已完成，检测是否有弹窗（如"已经是最后一份试卷！"）
+      log('AMEQP: 等待结束，开始检测弹窗...');
+      broadcastStatus('检测弹窗...');
+      const dialogResult = await checkAmeqpDialog(reviewState.currentTabId);
+      log('AMEQP: 弹窗检测结果:', JSON.stringify(dialogResult));
+      
+      if (dialogResult && dialogResult.isLastPaper) {
+        log('★★★ 已经是最后一份试卷，自动停止 ★★★');
+        broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
+        stopReview();
+        return;
+      }
+      if (dialogResult && dialogResult.dismissed) {
+        log('AMEQP: 弹窗已处理(非最后一份):', dialogResult.dialogText);
+      }
+      if (!dialogResult || !dialogResult.dismissed) {
+        log('AMEQP: 无弹窗，继续下一份');
+      }
+    } else {
+      // 其他平台: 需要手动点击"下一份"按钮
+      broadcastStatus('提交成功，准备下一份...');
+      await delay(SUBMIT_DELAY);
+      if (!reviewState.isActive) return;
+      
+      await clickNextButton(reviewState.currentTabId);
+      if (!reviewState.isActive) return;
+      
+      await delay(NEXT_PAGE_DELAY);
+    }
     
-    // 12. 等待页面加载后继续下一轮
-    await delay(NEXT_PAGE_DELAY);
     if (!reviewState.isActive) return;
     
     // 继续下一轮
@@ -318,6 +354,7 @@ async function executeReviewCycle() {
 
 // 填分并提交
 async function fillScoreAndSubmit(tabId, score) {
+  log(`fillScoreAndSubmit: score=${score}, platform="${reviewState.platform}", tabId=${tabId}`);
   return new Promise((resolve, reject) => {
     chrome.tabs.sendMessage(tabId, {
       action: 'fill_score_and_submit',
@@ -325,16 +362,48 @@ async function fillScoreAndSubmit(tabId, score) {
       platform: reviewState.platform
     }, (response) => {
       if (chrome.runtime.lastError) {
-        logError('填分通信失败:', chrome.runtime.lastError.message);
+        logError('fillScoreAndSubmit: 通信失败:', chrome.runtime.lastError.message);
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
+      log('fillScoreAndSubmit: 收到响应:', JSON.stringify(response));
       if (response && response.success) {
-        log('填分提交成功');
-        resolve();
+        log('fillScoreAndSubmit: 成功, autoNextAfterSubmit=', response.autoNextAfterSubmit);
+        resolve(response);
       } else {
-        logError('填分提交失败:', response?.error);
+        logError('fillScoreAndSubmit: 失败:', response?.error);
         reject(new Error(response?.error || '填分提交失败'));
+      }
+    });
+  });
+}
+
+// AMEQP: 检测页面弹窗（在 AJAX 完成后调用）
+async function checkAmeqpDialog(tabId) {
+  log('checkAmeqpDialog: 发送 dismiss_dialog 到 tab', tabId);
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, {
+      action: 'dismiss_dialog',
+      platform: reviewState.platform
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        logError('checkAmeqpDialog: 通信失败:', chrome.runtime.lastError.message);
+        resolve(null);
+        return;
+      }
+      log('checkAmeqpDialog: 收到 content.js 响应:', JSON.stringify(response));
+      if (response && response.success) {
+        const dialogText = response.dialogText || '';
+        const isLast = dialogText.includes('最后一份') || dialogText.includes('没有试卷') || dialogText.includes('已全部');
+        log(`checkAmeqpDialog: dismissed=${response.dismissed}, dialogText="${dialogText}", isLastPaper=${isLast}`);
+        resolve({
+          dismissed: response.dismissed,
+          dialogText: dialogText,
+          isLastPaper: isLast
+        });
+      } else {
+        log('checkAmeqpDialog: 响应无效或失败, response:', response);
+        resolve(null);
       }
     });
   });
