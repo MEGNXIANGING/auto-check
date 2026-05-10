@@ -50,6 +50,36 @@ const PLATFORM_CONFIG = {
     nextButtonText: ['下一份', '下一个'],
     isAspNet: false
   },
+  // 诊学网阅卷平台
+  zhenxue: {
+    scoreInput: [
+      'input[placeholder*="得分"]',
+      'input[placeholder*="分"]',
+      'input[id*="score" i]',
+      'input[name*="score" i]',
+      'input[class*="score" i]',
+      'input[type="number"]'
+    ],
+    submitButton: [
+      'button:contains("提交")',
+      'input[type="button"][value*="提交"]',
+      'input[type="submit"][value*="提交"]',
+      'a:contains("提交")',
+      '[role="button"]:contains("提交")',
+      'button[class*="submit" i]'
+    ],
+    nextButton: [
+      '[title*="下一"]',
+      '[aria-label*="下一"]',
+      'button:contains("下一")',
+      'a:contains("下一")',
+      '[role="button"]:contains("下一")'
+    ],
+    nextButtonText: ['下一份', '下一个', '下一题', '下一张'],
+    isAspNet: false,
+    submitReadyWait: true,
+    autoNextAfterSubmit: true
+  },
   // AMEQP全通教学质量监测平台（ASP.NET WebForms）
   ameqp: {
     scoreInput: [
@@ -419,14 +449,85 @@ function findElement(selectors) {
   return null;
 }
 
+function getElementText(el) {
+  if (!el) return '';
+  const rawText = el.tagName === 'INPUT'
+    ? (el.value || el.getAttribute('value') || '')
+    : (el.textContent || '');
+  return rawText.trim().replace(/\s+/g, ' ');
+}
+
+function getCompactElementText(el) {
+  return getElementText(el).replace(/\s+/g, '');
+}
+
+function isVisibleElement(el) {
+  if (!el || !el.getBoundingClientRect) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const style = window.getComputedStyle(el);
+  return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function isElementDisabled(el) {
+  if (!el) return true;
+  const className = String(el.className || '');
+  return !!el.disabled ||
+    el.getAttribute('disabled') !== null ||
+    el.getAttribute('aria-disabled') === 'true' ||
+    /\bdisabled\b/.test(className);
+}
+
+function findVisibleClickableByText(text, options = {}) {
+  const targetText = text.replace(/\s+/g, '');
+  const clickables = Array.from(document.querySelectorAll(
+    'button, input[type="button"], input[type="submit"], a, [role="button"]'
+  ));
+
+  const candidates = clickables.filter(el => {
+    if (!isVisibleElement(el)) return false;
+    const elText = getCompactElementText(el);
+    if (options.exact === false) {
+      return elText.includes(targetText);
+    }
+    return elText === targetText;
+  });
+
+  if (options.rightSide) {
+    const minLeft = window.innerWidth * 0.55;
+    candidates.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      const aRight = ar.left > minLeft ? 1 : 0;
+      const bRight = br.left > minLeft ? 1 : 0;
+      return bRight - aRight || br.left - ar.left || ar.top - br.top;
+    });
+  }
+
+  return candidates[0] || null;
+}
+
 // 填入分数（增强版，确保Vue能检测到变化）
 function fillScore(score, platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
+
+  if (platform === 'zhenxue') {
+    const quickFilled = fillZhenxueQuickScore(score);
+    if (quickFilled) {
+      return true;
+    }
+  }
+
   let input = findElement(config.scoreInput);
   
   // AMEQP平台特殊查找逻辑：在分数区域附近查找text输入框
   if (!input && platform === 'ameqp') {
     input = findAmeqpScoreInput();
+  }
+
+  // 诊学网分数框没有稳定 placeholder，需要按右侧评分面板位置推断
+  if (!input && platform === 'zhenxue') {
+    input = findZhenxueScoreInput();
   }
   
   // 如果通过配置找不到，尝试更通用的方式
@@ -474,7 +575,146 @@ function fillScore(score, platform) {
     return fillScoreAspNet(input, scoreStr);
   }
   
+  if (platform === 'zhenxue') {
+    return fillScoreZhenxue(input, scoreStr);
+  }
+
   return fillScoreVue(input, scoreStr);
+}
+
+// 诊学网平台专用：使用"零分/满分"快捷按钮，优先走页面自己的赋分逻辑
+function fillZhenxueQuickScore(score) {
+  const scoreNum = parseFloat(score);
+  if (!Number.isFinite(scoreNum)) return false;
+
+  if (Math.abs(scoreNum) < 0.0001) {
+    return clickZhenxueQuickScore('零分');
+  }
+
+  const maxScore = getZhenxueMaxScore();
+  if (maxScore !== null && Math.abs(scoreNum - maxScore) < 0.0001) {
+    return clickZhenxueQuickScore('满分');
+  }
+
+  return false;
+}
+
+function clickZhenxueQuickScore(label) {
+  const btn = findVisibleClickableByText(label, { rightSide: true });
+  if (!btn) {
+    log(`诊学网: 未找到"${label}"快捷按钮`);
+    return false;
+  }
+
+  const rect = btn.getBoundingClientRect();
+  log(`诊学网: 点击"${label}"快捷按钮`, `pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
+  btn.click();
+  return true;
+}
+
+function getZhenxueMaxScore() {
+  const text = document.body?.innerText || '';
+  const patterns = [
+    /[（(]\s*([0-9]+(?:\.[0-9]+)?)\s*[)）]\s*分\s*[：:]/,
+    /满分\s*([0-9]+(?:\.[0-9]+)?)\s*分/,
+    /([0-9]+(?:\.[0-9]+)?)\s*分\s*[：:]\s*$/
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1]);
+      if (Number.isFinite(value)) {
+        log('诊学网: 解析到满分值:', value);
+        return value;
+      }
+    }
+  }
+
+  log('诊学网: 未解析到满分值，跳过满分快捷按钮');
+  return null;
+}
+
+// 诊学网平台专用：查找右侧评分面板中的分数输入框
+function findZhenxueScoreInput() {
+  const inputs = Array.from(document.querySelectorAll('input, textarea')).filter(inp => {
+    const type = (inp.type || '').toLowerCase();
+    return type !== 'hidden' &&
+      type !== 'button' &&
+      type !== 'submit' &&
+      !inp.readOnly &&
+      !inp.disabled &&
+      isVisibleElement(inp);
+  });
+
+  const candidates = inputs.map(inp => {
+    const rect = inp.getBoundingClientRect();
+    const contextText = getZhenxueNearbyText(inp);
+    let score = 0;
+
+    if (rect.left > window.innerWidth * 0.55) score += 50;
+    if (rect.width >= 35 && rect.width <= 180) score += 25;
+    if (rect.height >= 20 && rect.height <= 70) score += 15;
+    if (rect.top >= 100 && rect.top <= 460) score += 20;
+    if (/得分|分|零分|满分|提交/.test(contextText)) score += 40;
+    if (inp.placeholder && /得分|分/.test(inp.placeholder)) score += 40;
+    if (/score|mark|point|grade/i.test(`${inp.id} ${inp.name} ${inp.className}`)) score += 30;
+
+    return { inp, score, rect, contextText };
+  }).filter(item => item.score > 0);
+
+  candidates.sort((a, b) => b.score - a.score || b.rect.left - a.rect.left || a.rect.top - b.rect.top);
+
+  const best = candidates[0];
+  if (best) {
+    log('诊学网: 通过右侧评分面板推断分数输入框',
+      `score=${best.score}`,
+      `pos=(${Math.round(best.rect.left)},${Math.round(best.rect.top)})`,
+      `size=${Math.round(best.rect.width)}x${Math.round(best.rect.height)}`,
+      `context="${best.contextText.substring(0, 80)}"`);
+    return best.inp;
+  }
+
+  log('诊学网: 未找到分数输入框候选');
+  return null;
+}
+
+function getZhenxueNearbyText(el) {
+  const texts = [];
+  let node = el;
+  for (let depth = 0; node && depth < 5; depth++) {
+    const text = (node.textContent || '').trim().replace(/\s+/g, ' ');
+    if (text) {
+      texts.push(text.substring(0, 160));
+    }
+    node = node.parentElement;
+  }
+
+  const prev = el.previousElementSibling?.textContent || '';
+  const next = el.nextElementSibling?.textContent || '';
+  if (prev || next) {
+    texts.push(`${prev} ${next}`.trim().replace(/\s+/g, ' '));
+  }
+
+  return texts.join(' ');
+}
+
+function fillScoreZhenxue(input, scoreStr) {
+  log('诊学网平台填分模式');
+
+  const ok = fillScoreVue(input, scoreStr);
+
+  // 诊学网的提交按钮依赖前端状态，额外补齐常见输入事件。
+  input.dispatchEvent(new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    inputType: 'insertText',
+    data: scoreStr
+  }));
+  input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+  input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+  return ok;
 }
 
 // AMEQP平台专用：查找分数输入框
@@ -699,6 +939,201 @@ function fillScoreVue(input, scoreStr) {
   return true;
 }
 
+function findZhenxueSubmitButton() {
+  const btn = findVisibleClickableByText('提交', { rightSide: true, exact: false });
+  if (btn) return btn;
+
+  const candidates = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a, [role="button"]'))
+    .filter(isVisibleElement)
+    .filter(el => getCompactElementText(el).includes('提交'));
+
+  return candidates[0] || null;
+}
+
+function waitForZhenxueSubmitReady(maxWaitMs = 2500) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+
+    function check() {
+      const submitBtn = findZhenxueSubmitButton();
+      if (submitBtn && !isElementDisabled(submitBtn)) {
+        log(`诊学网: 提交按钮已可用 (${Date.now() - start}ms)`);
+        resolve(true);
+        return;
+      }
+
+      const input = findZhenxueScoreInput();
+      if (input) {
+        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+      }
+
+      if (Date.now() - start >= maxWaitMs) {
+        log('诊学网: 等待提交按钮可用超时');
+        resolve(false);
+        return;
+      }
+
+      setTimeout(check, 200);
+    }
+
+    check();
+  });
+}
+
+function getZhenxueSubmissionState() {
+  const paperId = (document.querySelector('#paperID')?.textContent || '').trim();
+  const myRead = (document.querySelector('#myRead')?.textContent || '').trim();
+  const input = findZhenxueScoreInput();
+  const submitBtn = findZhenxueSubmitButton();
+
+  return {
+    paperId,
+    myRead,
+    score: input ? input.value : '',
+    submitDisabled: submitBtn ? isElementDisabled(submitBtn) : null
+  };
+}
+
+function hasZhenxueSubmissionAdvanced(before, after) {
+  if (!before || !after) return false;
+  if (before.paperId && after.paperId && before.paperId !== after.paperId) return true;
+
+  const beforeRead = parseInt(before.myRead, 10);
+  const afterRead = parseInt(after.myRead, 10);
+  if (Number.isFinite(beforeRead) && Number.isFinite(afterRead) && afterRead > beforeRead) {
+    return true;
+  }
+
+  if (before.score && !after.score) return true;
+  return false;
+}
+
+function waitForZhenxueSubmissionAdvanced(before, maxWaitMs = 8000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+
+    function check() {
+      const after = getZhenxueSubmissionState();
+      if (hasZhenxueSubmissionAdvanced(before, after)) {
+        log('诊学网: 检测到提交后页面已前进', JSON.stringify({ before, after }));
+        resolve({ advanced: true, after });
+        return;
+      }
+
+      if (Date.now() - start >= maxWaitMs) {
+        log('诊学网: 提交后页面未变化', JSON.stringify({ before, after }));
+        resolve({ advanced: false, after });
+        return;
+      }
+
+      setTimeout(check, 300);
+    }
+
+    check();
+  });
+}
+
+function dispatchTrustedLikeClick(el) {
+  if (!el) return false;
+
+  const rect = el.getBoundingClientRect();
+  const clientX = Math.round(rect.left + rect.width / 2);
+  const clientY = Math.round(rect.top + rect.height / 2);
+  const target = document.elementFromPoint(clientX, clientY) || el;
+  const eventOptions = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    view: window,
+    clientX,
+    clientY,
+    button: 0,
+    buttons: 1
+  };
+
+  if (window.PointerEvent) {
+    target.dispatchEvent(new PointerEvent('pointerdown', { ...eventOptions, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+  }
+  target.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+  target.dispatchEvent(new MouseEvent('mouseup', { ...eventOptions, buttons: 0 }));
+  if (window.PointerEvent) {
+    target.dispatchEvent(new PointerEvent('pointerup', { ...eventOptions, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+  }
+  target.dispatchEvent(new MouseEvent('click', { ...eventOptions, buttons: 0 }));
+
+  if (target !== el) {
+    el.dispatchEvent(new MouseEvent('click', { ...eventOptions, buttons: 0 }));
+  }
+  el.click();
+
+  return true;
+}
+
+function triggerZhenxueFormSubmit(submitBtn) {
+  const form = document.querySelector('#form-scoring') || submitBtn?.closest('form');
+  if (!form) {
+    log('诊学网: 未找到 #form-scoring，无法直接触发表单提交');
+    return false;
+  }
+
+  const input = findZhenxueScoreInput();
+  if (input) {
+    input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+  }
+
+  if (submitBtn) {
+    submitBtn.removeAttribute('disabled');
+    submitBtn.disabled = false;
+    submitBtn.classList.add('ScoreSelected');
+  }
+
+  if (window.jQuery) {
+    window.jQuery(form).trigger('submit');
+    return true;
+  }
+
+  if (form.requestSubmit) {
+    form.requestSubmit(submitBtn || undefined);
+    return true;
+  }
+
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  return true;
+}
+
+async function submitZhenxueScoreAndVerify() {
+  const ready = await waitForZhenxueSubmitReady(3000);
+  const submitBtn = findZhenxueSubmitButton();
+  if (!ready || !submitBtn || isElementDisabled(submitBtn)) {
+    logError('诊学网: 提交按钮未就绪');
+    return { success: false, error: '诊学网提交按钮未就绪' };
+  }
+
+  const before = getZhenxueSubmissionState();
+  log('诊学网: 提交前状态:', JSON.stringify(before));
+
+  dispatchTrustedLikeClick(submitBtn);
+  let result = await waitForZhenxueSubmissionAdvanced(before, 4000);
+  if (result.advanced) {
+    return { success: true, autoNextAfterSubmit: true };
+  }
+
+  log('诊学网: 点击按钮后未提交，改用页面 #form-scoring submit 兜底');
+  triggerZhenxueFormSubmit(submitBtn);
+  result = await waitForZhenxueSubmissionAdvanced(before, 8000);
+  if (result.advanced) {
+    return { success: true, autoNextAfterSubmit: true };
+  }
+
+  return {
+    success: false,
+    error: '诊学网提交后页面未进入下一份，请检查页面是否弹出提示或分数校验失败'
+  };
+}
+
 // 点击提交按钮（精确版，支持多平台）
 function clickSubmit(platform) {
   log('');
@@ -709,10 +1144,19 @@ function clickSubmit(platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
   let submitBtn = null;
   
+  if (platform === 'zhenxue') {
+    submitBtn = findZhenxueSubmitButton();
+    if (submitBtn) {
+      log('诊学网: 通过右侧评分面板找到提交按钮');
+    }
+  }
+
   // 1. 先尝试通过平台配置的选择器查找
-  submitBtn = findElement(config.submitButton);
-  if (submitBtn) {
-    log('通过平台配置选择器找到提交按钮');
+  if (!submitBtn) {
+    submitBtn = findElement(config.submitButton);
+    if (submitBtn) {
+      log('通过平台配置选择器找到提交按钮');
+    }
   }
   
   // 2. 搜索 <button> 元素（文本匹配"提交"）
@@ -807,6 +1251,11 @@ function clickSubmit(platform) {
   
   if (!btnText.includes('提交')) {
     logError(`✗ 安全检查失败！按钮文本是"${btnText}"而不包含"提交"，拒绝点击`);
+    return false;
+  }
+
+  if (platform === 'zhenxue' && isElementDisabled(submitBtn)) {
+    logError('✗ 诊学网提交按钮仍处于禁用状态，拒绝点击');
     return false;
   }
   
@@ -915,6 +1364,64 @@ function handleConfirmDialog() {
   return false;
 }
 
+function findZhenxueNextButton() {
+  const strongSelectors = [
+    '[title*="下一"]',
+    '[aria-label*="下一"]',
+    'button:contains("下一")',
+    'a:contains("下一")',
+    '[role="button"]:contains("下一")'
+  ];
+
+  const byTextOrAttr = findElement(strongSelectors);
+  if (byTextOrAttr && isVisibleElement(byTextOrAttr)) {
+    return byTextOrAttr;
+  }
+
+  const clickables = Array.from(document.querySelectorAll(
+    'a, button, [role="button"], [onclick], .iconfont, i, span'
+  )).filter(isVisibleElement);
+
+  const candidates = clickables.map(el => {
+    const rect = el.getBoundingClientRect();
+    const text = getCompactElementText(el);
+    const attrs = [
+      el.id,
+      el.className,
+      el.getAttribute('title'),
+      el.getAttribute('aria-label'),
+      el.getAttribute('href'),
+      el.getAttribute('onclick')
+    ].join(' ');
+
+    let score = 0;
+    if (/下一|下一个|next|arrow|right|forward|chevron/i.test(`${text} ${attrs}`)) score += 60;
+    if (rect.left > window.innerWidth - 170) score += 35;
+    if (rect.top > 145 && rect.top < 380) score += 35;
+    if (rect.width >= 16 && rect.width <= 90 && rect.height >= 16 && rect.height <= 90) score += 20;
+    if (text && !/^[>›»下一下一个下一份下一题]+$/.test(text)) score -= 80;
+    if (/提交|收藏|问题卷|图片另存|回评|零分|满分|关闭|退出/.test(text)) score -= 120;
+
+    return { el, rect, text, attrs, score };
+  }).filter(item => item.score >= 70);
+
+  candidates.sort((a, b) => b.score - a.score || b.rect.left - a.rect.left || a.rect.top - b.rect.top);
+
+  const best = candidates[0];
+  if (best) {
+    log('诊学网: 通过右侧无文本箭头推断下一份按钮',
+      `score=${best.score}`,
+      `tag=${best.el.tagName}`,
+      `text="${best.text}"`,
+      `class="${best.el.className}"`,
+      `pos=(${Math.round(best.rect.left)},${Math.round(best.rect.top)})`);
+    return best.el;
+  }
+
+  log('诊学网: 未找到下一份右箭头候选');
+  return null;
+}
+
 // 点击下一份按钮
 function clickNext(platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
@@ -922,8 +1429,15 @@ function clickNext(platform) {
   
   let element = null;
   
+  if (platform === 'zhenxue') {
+    element = findZhenxueNextButton();
+    if (element) {
+      log('诊学网: 找到下一份按钮');
+    }
+  }
+
   // 1. 首先尝试通过配置的选择器查找
-  if (config.nextButton && config.nextButton.length > 0) {
+  if (!element && config.nextButton && config.nextButton.length > 0) {
     element = findElement(config.nextButton);
     if (element) {
       log('通过平台配置选择器找到下一份按钮');
@@ -1254,6 +1768,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         
         if (platformConfig.autoNextAfterSubmit) {
+          if (msg.platform === 'zhenxue') {
+            // === 诊学网流程：填分 → 提交 → 页面自己拉取下一份 ===
+            setTimeout(async () => {
+              try {
+                log('步骤2(诊学网): 提交并等待页面进入下一份');
+                const result = await submitZhenxueScoreAndVerify();
+                if (!result.success) {
+                  sendResponse({ success: false, error: result.error || '诊学网提交失败' });
+                  return;
+                }
+
+                log('========== 填分提交完成(诊学网)，页面已进入下一份 ==========');
+                sendResponse({
+                  success: true,
+                  autoNextAfterSubmit: true
+                });
+              } catch (error) {
+                logError('诊学网提交出错:', error);
+                sendResponse({ success: false, error: error.message });
+              }
+            }, 500);
+            return true;
+          }
+
           // === AMEQP 流程：填分 → 提交 → 立即返回（弹窗检测由 background.js 在等待后执行） ===
           setTimeout(() => {
             log('步骤2(AMEQP): 点击提交按钮');
@@ -1274,25 +1812,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }, 300);
         } else {
           // === Vue/Element UI 平台流程 ===
-          setTimeout(() => {
-            log('步骤2: 点击提交按钮');
-            const submitted = clickSubmit(msg.platform);
+          const submitDelay = msg.platform === 'zhenxue' ? 800 : 500;
+          setTimeout(async () => {
+            try {
+              if (msg.platform === 'zhenxue') {
+                await waitForZhenxueSubmitReady(2500);
+              }
             
-            if (!submitted) {
-              sendResponse({ success: false, error: '未找到提交按钮' });
-              return;
-            }
+              log('步骤2: 点击提交按钮');
+              const submitted = clickSubmit(msg.platform);
             
-            setTimeout(() => {
-              log('步骤3: 检查弹窗');
-              handleConfirmDialog();
+              if (!submitted) {
+                sendResponse({ success: false, error: '未找到或无法点击提交按钮' });
+                return;
+              }
               
               setTimeout(() => {
-                log('========== 填分提交流程完成 ==========');
-                sendResponse({ success: true });
-              }, 500);
-            }, 800);
-          }, 500);
+                log('步骤3: 检查弹窗');
+                handleConfirmDialog();
+
+                setTimeout(() => {
+                  log('========== 填分提交流程完成 ==========');
+                  sendResponse({ success: true });
+                }, 500);
+              }, 800);
+            } catch (error) {
+              logError('点击提交阶段出错:', error);
+              sendResponse({ success: false, error: error.message });
+            }
+          }, submitDelay);
         }
         
         return true;

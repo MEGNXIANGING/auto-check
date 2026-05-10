@@ -1,7 +1,7 @@
 // popup.js - 负责UI交互和配置管理
 
 // ============ DOM元素 ============
-let platformZxwBtn, platformDnjyBtn, platformAmeqpBtn, currentPlatformText;
+let platformZxwBtn, platformDnjyBtn, platformZhenxueBtn, platformAmeqpBtn, currentPlatformText;
 let selectBtn, startBtn, stopBtn, singleBtn, exportBtn;
 let promptInput, resultDiv, areaStatus, statusIndicator;
 let aiResultDiv, lastScoreBadge, reviewCountSpan, currentStatusSpan;
@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 获取DOM元素
   platformZxwBtn = document.getElementById('platform-zxw');
   platformDnjyBtn = document.getElementById('platform-dnjy');
+  platformZhenxueBtn = document.getElementById('platform-zhenxue');
   platformAmeqpBtn = document.getElementById('platform-ameqp');
   currentPlatformText = document.getElementById('current-platform-text');
   selectBtn = document.getElementById('select-area');
@@ -100,6 +101,9 @@ function bindEvents() {
   }
   if (platformDnjyBtn) {
     platformDnjyBtn.addEventListener('click', () => selectPlatform('dnjy'));
+  }
+  if (platformZhenxueBtn) {
+    platformZhenxueBtn.addEventListener('click', () => selectPlatform('zhenxue'));
   }
   if (platformAmeqpBtn) {
     platformAmeqpBtn.addEventListener('click', () => selectPlatform('ameqp'));
@@ -240,6 +244,7 @@ function selectPlatform(platform) {
 const PLATFORM_NAMES = {
   zxw: '智学网',
   dnjy: '懂你教育',
+  zhenxue: '诊学网',
   ameqp: 'AMEQP'
 };
 
@@ -249,6 +254,9 @@ function updatePlatformButtons() {
   }
   if (platformDnjyBtn) {
     platformDnjyBtn.classList.toggle('active', currentPlatform === 'dnjy');
+  }
+  if (platformZhenxueBtn) {
+    platformZhenxueBtn.classList.toggle('active', currentPlatform === 'zhenxue');
   }
   if (platformAmeqpBtn) {
     platformAmeqpBtn.classList.toggle('active', currentPlatform === 'ameqp');
@@ -480,6 +488,22 @@ function getReviewStatus() {
       if (response.platform) {
         currentPlatform = response.platform;
         updatePlatformButtons();
+      }
+
+      if (response.currentStatus) {
+        updateCurrentStatus(response.currentStatus);
+      } else if (response.isActive) {
+        updateCurrentStatus('后台阅卷中...');
+      }
+
+      if (response.count !== undefined) {
+        reviewCount = response.count;
+        updateReviewCount();
+      }
+
+      if (response.limit !== undefined && reviewLimitInput && !reviewLimitInput.value) {
+        reviewLimitInput.value = response.limit || 0;
+        updateReviewCount();
       }
     }
   });

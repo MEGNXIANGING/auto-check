@@ -5,16 +5,19 @@ let reviewState = {
   isActive: false,           // 是否正在阅卷
   selectedArea: null,        // 选定的阅卷区域
   prompt: '',                // 评分提示词
-  platform: 'zxw',           // 当前平台: zxw(智学网) / dnjy(懂你教育) / ameqp(AMEQP)
+  platform: 'zxw',           // 当前平台: zxw(智学网) / dnjy(懂你教育) / zhenxue(诊学网) / ameqp(AMEQP)
   currentTabId: null,        // 当前操作的标签页ID
   lastCaptureTime: 0,        // 上次截图时间
   retryCount: 0,             // 重试次数
   maxRetries: 5,             // 最大重试次数（含页面刷新恢复）
-  limit: 0                   // 阅卷次数限制（0=不限制）
+  limit: 0,                  // 阅卷次数限制（0=不限制）
+  currentStatus: '等待开始',  // 最近一次状态，用于 popup 重新打开后同步
+  lastError: null,            // 最近一次错误
+  activeStartedAt: null       // 当前阅卷会话开始时间
 };
 
-// AMEQP: OnSubmit(1) 提交后自动AJAX加载下一份，不需要手动点"下一份"
-const AUTO_NEXT_PLATFORMS = ['ameqp'];
+// 提交后页面自己加载下一份，不需要手动点"下一份"
+const AUTO_NEXT_PLATFORMS = ['ameqp', 'zhenxue'];
 
 // 阅卷记录
 let reviewRecords = [];
@@ -23,6 +26,7 @@ let sessionStartTime = null;
 const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
 const SUBMIT_DELAY = 3000;         // 提交后等待时间（包含弹窗处理）
 const NEXT_PAGE_DELAY = 2000;      // 切换下一份的等待时间
+const API_TIMEOUT = 60000;         // AI 接口超时时间，避免永久卡在"阅卷中"
 const AMEQP_PAGE_LOAD_DELAY = 5000;  // AMEQP 提交后等待 AJAX 完成（含服务器响应时间）
 const AMEQP_AFTER_CONFIRM_DELAY = 5000; // AMEQP 点击确认弹窗"确定"后等待实际AJAX完成
 
@@ -51,6 +55,25 @@ function canCapture() {
 // 延迟执行
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error(`AI接口请求超时（${Math.round(timeoutMs / 1000)}秒）`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ============ 截图功能 ============
@@ -136,7 +159,7 @@ async function callDoubaoAPI(prompt, imageUrl) {
   log('调用豆包API进行评分...');
   
   try {
-    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+    const response = await fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -292,7 +315,7 @@ async function executeReviewCycle() {
     // 11. 根据平台决定是否需要手动点"下一份"
     const isAutoNext = AUTO_NEXT_PLATFORMS.includes(reviewState.platform);
     
-    if (isAutoNext) {
+    if (reviewState.platform === 'ameqp') {
       // AMEQP 弹窗处理循环:
       //   提交 → 等待 → 检测弹窗 → 如果是确认弹窗(如"分值偏低") → 点确定 → 再等待 → 再检测
       //   直到: 无弹窗(正常继续) 或 "最后一份"(停止)
@@ -326,6 +349,10 @@ async function executeReviewCycle() {
         log(`AMEQP: 第${round}轮无弹窗，页面已就绪，继续下一份`);
         break;
       }
+    } else if (isAutoNext) {
+      broadcastStatus('提交成功，等待下一份加载...');
+      await delay(NEXT_PAGE_DELAY);
+      if (!reviewState.isActive) return;
     } else {
       // 其他平台: 需要手动点击"下一份"按钮
       broadcastStatus('提交成功，准备下一份...');
@@ -348,6 +375,7 @@ async function executeReviewCycle() {
     if (!reviewState.isActive) return;
     
     const errMsg = error.message || '';
+    reviewState.lastError = errMsg;
     const isCommError = (
       errMsg.includes('Receiving end does not exist') ||
       errMsg.includes('通信失败') ||
@@ -527,6 +555,9 @@ async function startReview(config) {
   reviewState.retryCount = 0;
   reviewState.lastCaptureTime = 0;
   reviewState.limit = config.limit || 0;  // 阅卷次数限制
+  reviewState.currentStatus = '正在启动...';
+  reviewState.lastError = null;
+  reviewState.activeStartedAt = Date.now();
   
   // 清空阅卷记录，开始新的阅卷会话
   reviewRecords = [];
@@ -553,7 +584,8 @@ function stopReview(reason) {
   log(`停止阅卷, 原因: ${reason || '用户手动停止'}, 已完成: ${reviewRecords.length}份`);
   reviewState.isActive = false;
   reviewState.commRetryCount = 0;
-  broadcastStatus('阅卷已停止');
+  reviewState.activeStartedAt = null;
+  broadcastStatus(reason ? `阅卷已停止：${reason}` : '阅卷已停止');
   return { success: true };
 }
 
@@ -563,13 +595,19 @@ function getStatus() {
     isActive: reviewState.isActive,
     selectedArea: reviewState.selectedArea,
     prompt: reviewState.prompt,
-    platform: reviewState.platform
+    platform: reviewState.platform,
+    currentStatus: reviewState.currentStatus,
+    lastError: reviewState.lastError,
+    activeStartedAt: reviewState.activeStartedAt,
+    count: reviewRecords.length,
+    limit: reviewState.limit
   };
 }
 
 // 广播状态给popup
 function broadcastStatus(message) {
   log('广播状态:', message);
+  reviewState.currentStatus = message;
   chrome.runtime.sendMessage({
     action: 'status_update',
     message: message
