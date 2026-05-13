@@ -1,12 +1,20 @@
 // content.js - 负责页面DOM操作（区域选择、填分、提交）
 
 // ============ 日志函数 ============
+const VERBOSE_LOG = false;
+
 function log(...args) {
   console.log('[香猫阅卷-Content]', ...args);
 }
 
 function logError(...args) {
   console.error('[香猫阅卷-Content]', ...args);
+}
+
+function logVerbose(...args) {
+  if (VERBOSE_LOG) {
+    log(...args);
+  }
 }
 
 // ============ 平台配置 ============
@@ -97,6 +105,20 @@ const PLATFORM_CONFIG = {
     nextButtonText: [],
     isAspNet: true,
     autoNextAfterSubmit: true  // OnSubmit(1) 提交后自动AJAX加载下一份，不需要手动点"下一份"
+  },
+  // 微博士校园管理中心：点击分数按钮即提交并自动进入下一人/下一题
+  weiboshi: {
+    scoreInput: [
+      'input[placeholder*="分"]',
+      'input[type="number"]',
+      'input[type="text"]'
+    ],
+    submitButton: [],
+    nextButton: [],
+    nextButtonText: [],
+    isAspNet: false,
+    autoNextAfterSubmit: true,
+    scoreButtonSubmit: true
   }
 };
 
@@ -366,6 +388,17 @@ function cleanup() {
 }
 
 // ============ 图片裁剪功能 ============
+const CROP_IMAGE_MAX_SIDE = 1600;
+const CROP_IMAGE_JPEG_QUALITY = 0.82;
+const CROP_IMAGE_MAX_DATA_URL_LENGTH = 1.8 * 1024 * 1024;
+
+function formatImageSize(bytes) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(2)}MB`;
+  }
+  return `${Math.round(bytes / 1024)}KB`;
+}
+
 function cropImage(dataUrl, area) {
   return new Promise((resolve, reject) => {
     try {
@@ -375,25 +408,53 @@ function cropImage(dataUrl, area) {
       img.onload = function() {
         try {
           const scale = window.devicePixelRatio || 1;
+          const sourceW = Math.max(1, Math.round(area.w * scale));
+          const sourceH = Math.max(1, Math.round(area.h * scale));
+          const resizeRatio = Math.min(1, CROP_IMAGE_MAX_SIDE / Math.max(sourceW, sourceH));
+          const targetW = Math.max(1, Math.round(sourceW * resizeRatio));
+          const targetH = Math.max(1, Math.round(sourceH * resizeRatio));
           const canvas = document.createElement('canvas');
-          canvas.width = area.w * scale;
-          canvas.height = area.h * scale;
+          canvas.width = targetW;
+          canvas.height = targetH;
           
           const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, targetW, targetH);
           ctx.drawImage(
             img,
             area.x * scale,
             area.y * scale,
-            area.w * scale,
-            area.h * scale,
+            sourceW,
+            sourceH,
             0, 0,
-            area.w * scale,
-            area.h * scale
+            targetW,
+            targetH
           );
           
-          const croppedUrl = canvas.toDataURL('image/png');
-          log('图片裁剪完成');
-          resolve(croppedUrl);
+          let quality = CROP_IMAGE_JPEG_QUALITY;
+          let croppedUrl = canvas.toDataURL('image/jpeg', quality);
+          while (croppedUrl.length > CROP_IMAGE_MAX_DATA_URL_LENGTH && quality > 0.58) {
+            quality = Math.max(0.58, quality - 0.08);
+            croppedUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          const estimatedBytes = Math.round(croppedUrl.length * 0.75);
+          const meta = {
+            sourceWidth: sourceW,
+            sourceHeight: sourceH,
+            width: targetW,
+            height: targetH,
+            quality: Number(quality.toFixed(2)),
+            bytes: estimatedBytes
+          };
+          log('图片裁剪完成',
+            `source=${sourceW}x${sourceH}`,
+            `output=${targetW}x${targetH}`,
+            `quality=${meta.quality}`,
+            `size=${formatImageSize(estimatedBytes)}`);
+          resolve({ url: croppedUrl, meta });
         } catch (error) {
           logError('裁剪图片canvas操作失败:', error);
           reject(error);
@@ -511,6 +572,10 @@ function findVisibleClickableByText(text, options = {}) {
 function fillScore(score, platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
 
+  if (platform === 'weiboshi') {
+    return fillWeiboshiScore(score);
+  }
+
   if (platform === 'zhenxue') {
     const quickFilled = fillZhenxueQuickScore(score);
     if (quickFilled) {
@@ -559,9 +624,9 @@ function fillScore(score, platform) {
     logError('未找到分数输入框，平台:', platform);
     
     const allInputs = document.querySelectorAll('input');
-    log('页面上的所有输入框:', allInputs.length);
+    logVerbose('页面上的所有输入框:', allInputs.length);
     allInputs.forEach((inp, i) => {
-      log(`输入框${i}: id="${inp.id}", name="${inp.name}", placeholder="${inp.placeholder}", class="${inp.className}", type="${inp.type}", value="${inp.value}"`);
+      logVerbose(`输入框${i}: id="${inp.id}", name="${inp.name}", placeholder="${inp.placeholder}", class="${inp.className}", type="${inp.type}", value="${inp.value}"`);
     });
     
     return false;
@@ -580,6 +645,394 @@ function fillScore(score, platform) {
   }
 
   return fillScoreVue(input, scoreStr);
+}
+
+function waitMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeScoreText(score) {
+  const scoreNum = parseFloat(String(score).replace('分', '').trim());
+  if (!Number.isFinite(scoreNum)) {
+    return null;
+  }
+
+  const rounded = Math.round(scoreNum * 100) / 100;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.0001) {
+    return String(Math.round(rounded));
+  }
+  return String(rounded).replace(/\.0$/, '');
+}
+
+function getWeiboshiElementText(el) {
+  if (!el) return '';
+  const raw = el.tagName === 'INPUT'
+    ? (el.value || el.getAttribute('value') || '')
+    : (el.textContent || '');
+  return raw.trim().replace(/\s+/g, '');
+}
+
+function getWeiboshiNearbyText(el) {
+  const texts = [];
+  let node = el;
+  for (let depth = 0; node && depth < 5; depth++) {
+    const text = (node.textContent || '').trim().replace(/\s+/g, ' ');
+    if (text) {
+      texts.push(text.substring(0, 220));
+    }
+    node = node.parentElement;
+  }
+  return texts.join(' ');
+}
+
+function clickWeiboshiElement(el) {
+  if (!el) return false;
+  el.click();
+  return true;
+}
+
+function getWeiboshiMaxScore() {
+  const text = document.body?.innerText || '';
+  const match = text.match(/本题满分为\s*([0-9]+(?:\.[0-9]+)?)\s*分/);
+  if (!match) return null;
+
+  const value = parseFloat(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function validateWeiboshiScore(score) {
+  const scoreNum = parseFloat(String(score).replace('分', '').trim());
+  const scoreStr = normalizeScoreText(score);
+
+  if (!scoreStr || !Number.isFinite(scoreNum)) {
+    return { ok: false, error: `微博士分数格式无效：${score}` };
+  }
+
+  const maxScore = getWeiboshiMaxScore();
+  if (scoreNum < 0) {
+    return { ok: false, error: `微博士分数不能小于0：${scoreStr}` };
+  }
+
+  if (maxScore !== null && scoreNum - maxScore > 0.0001) {
+    return {
+      ok: false,
+      error: `微博士识别分数${scoreStr}超过本题满分${normalizeScoreText(maxScore)}，已拒绝提交`
+    };
+  }
+
+  return { ok: true, scoreNum, scoreStr, maxScore };
+}
+
+function shouldUseWeiboshiHalfPoint(scoreNum) {
+  if (!Number.isFinite(scoreNum)) return false;
+  return Math.abs(scoreNum - Math.round(scoreNum)) > 0.0001;
+}
+
+function ensureWeiboshiHalfPointMode(scoreNum) {
+  if (!shouldUseWeiboshiHalfPoint(scoreNum)) {
+    return false;
+  }
+
+  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"], [role="checkbox"]'));
+  const target = checkboxes.find(el => getWeiboshiNearbyText(el).includes('精确到0.5分'));
+  if (!target) {
+    log('微博士: 未找到"精确到0.5分"开关');
+    return false;
+  }
+
+  const checked = !!target.checked || target.getAttribute('aria-checked') === 'true';
+  if (checked) {
+    log('微博士: 0.5分模式已开启');
+    return true;
+  }
+
+  let label = target.closest('label');
+  if (!label && target.id && window.CSS && CSS.escape) {
+    label = document.querySelector(`label[for="${CSS.escape(target.id)}"]`);
+  }
+  const clickTarget = label || target;
+  log('微博士: 开启0.5分模式');
+  clickWeiboshiElement(clickTarget);
+  return true;
+}
+
+function getWeiboshiScoreButtonLabels(scoreStr, scoreNum) {
+  const labels = [`${scoreStr}分`];
+  const maxScore = getWeiboshiMaxScore();
+
+  if (Math.abs(scoreNum) < 0.0001) {
+    labels.push(`全错${scoreStr}分`);
+  }
+
+  if (maxScore !== null && Math.abs(scoreNum - maxScore) < 0.0001) {
+    labels.push(`全对${scoreStr}分`);
+  }
+
+  return labels;
+}
+
+function findWeiboshiScoreButton(scoreStr, scoreNum) {
+  const labels = getWeiboshiScoreButtonLabels(scoreStr, scoreNum);
+  const plainLabel = `${scoreStr}分`;
+  const clickables = Array.from(document.querySelectorAll(
+    'button, input[type="button"], input[type="submit"], [role="button"]'
+  )).filter(isVisibleElement);
+
+  const candidates = clickables.map(el => {
+    const text = getWeiboshiElementText(el);
+    const rect = el.getBoundingClientRect();
+    const contextText = getWeiboshiNearbyText(el);
+    let score = 0;
+
+    if (text === plainLabel) score += 120;
+    if (labels.includes(text)) score += 90;
+    if (/^(全对|全错)?[0-9]+(?:\.[0-9]+)?分$/.test(text)) score += 20;
+    if (rect.left > window.innerWidth * 0.6) score += 45;
+    if (rect.top > 120 && rect.top < window.innerHeight - 40) score += 15;
+    if (/本题满分|精确到0\.5分|操作提示|点击分数按钮/.test(contextText)) score += 35;
+    if (/批改进度|查看已批|全屏批改|返回旧版|收起|保存图片|打勾|半对|打叉|画笔|复原/.test(text)) score -= 120;
+
+    return { el, text, rect, score, contextText };
+  }).filter(item => item.score >= 100);
+
+  candidates.sort((a, b) => {
+    const aPlain = a.text === plainLabel ? 1 : 0;
+    const bPlain = b.text === plainLabel ? 1 : 0;
+    return bPlain - aPlain ||
+      b.score - a.score ||
+      b.rect.left - a.rect.left ||
+      a.rect.top - b.rect.top;
+  });
+
+  const best = candidates[0];
+  if (best) {
+    log('微博士: 找到分数按钮',
+      `text="${best.text}"`,
+      `score=${best.score}`,
+      `pos=(${Math.round(best.rect.left)},${Math.round(best.rect.top)})`);
+    return best.el;
+  }
+
+  log('微博士: 未找到匹配分数按钮', `score=${scoreStr}`, `labels=${labels.join(',')}`);
+  return null;
+}
+
+function findWeiboshiInputModeButton() {
+  const buttons = Array.from(document.querySelectorAll('button, input[type="button"], [role="button"]'))
+    .filter(isVisibleElement);
+  return buttons.find(btn => getWeiboshiElementText(btn).includes('切换到输入打分')) || null;
+}
+
+function findWeiboshiScoreInput() {
+  const inputs = Array.from(document.querySelectorAll('input, textarea')).filter(inp => {
+    const type = (inp.type || '').toLowerCase();
+    return type !== 'hidden' &&
+      type !== 'button' &&
+      type !== 'submit' &&
+      type !== 'checkbox' &&
+      type !== 'radio' &&
+      !inp.readOnly &&
+      !inp.disabled &&
+      isVisibleElement(inp);
+  });
+
+  const candidates = inputs.map(inp => {
+    const rect = inp.getBoundingClientRect();
+    const contextText = getWeiboshiNearbyText(inp);
+    let score = 0;
+
+    if (rect.left > window.innerWidth * 0.55) score += 50;
+    if (rect.width >= 35 && rect.width <= 220) score += 20;
+    if (/输入打分|本题满分|操作提示|分/.test(contextText)) score += 40;
+    if (inp.placeholder && /分|得分|score/i.test(inp.placeholder)) score += 30;
+
+    return { inp, rect, contextText, score };
+  }).filter(item => item.score > 0);
+
+  candidates.sort((a, b) => b.score - a.score || b.rect.left - a.rect.left);
+
+  const best = candidates[0];
+  if (best) {
+    log('微博士: 找到输入打分框',
+      `score=${best.score}`,
+      `pos=(${Math.round(best.rect.left)},${Math.round(best.rect.top)})`);
+    return best.inp;
+  }
+
+  return null;
+}
+
+function pressEnterToSubmit(input) {
+  const eventOptions = {
+    key: 'Enter',
+    code: 'Enter',
+    keyCode: 13,
+    which: 13,
+    bubbles: true,
+    cancelable: true
+  };
+
+  input.dispatchEvent(new KeyboardEvent('keydown', eventOptions));
+  input.dispatchEvent(new KeyboardEvent('keypress', eventOptions));
+  input.dispatchEvent(new KeyboardEvent('keyup', eventOptions));
+}
+
+function getWeiboshiSubmissionState() {
+  const text = document.body?.innerText || '';
+  const answerOwnerMatch = text.match(/学生\s*[0-9]+\s*答案[：:]/);
+  const progressMatch = text.match(/已批改题量[:：]\s*[^\n]+/);
+
+  return {
+    answerOwner: answerOwnerMatch ? answerOwnerMatch[0].replace(/\s+/g, '') : '',
+    progress: progressMatch ? progressMatch[0].replace(/\s+/g, '') : '',
+    title: document.title
+  };
+}
+
+function hasWeiboshiSubmissionAdvanced(before, after) {
+  if (!before || !after) return false;
+  if (before.answerOwner && after.answerOwner && before.answerOwner !== after.answerOwner) return true;
+  if (before.progress && after.progress && before.progress !== after.progress) return true;
+  return false;
+}
+
+function waitForWeiboshiSubmissionAdvanced(before, maxWaitMs = 6000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+
+    function check() {
+      const after = getWeiboshiSubmissionState();
+      if (hasWeiboshiSubmissionAdvanced(before, after)) {
+        log('微博士: 检测到提交后页面已前进', JSON.stringify({ before, after }));
+        resolve({ advanced: true, after });
+        return;
+      }
+
+      if (Date.now() - start >= maxWaitMs) {
+        log('微博士: 提交后页面未检测到变化', JSON.stringify({ before, after }));
+        resolve({ advanced: false, after });
+        return;
+      }
+
+      setTimeout(check, 300);
+    }
+
+    check();
+  });
+}
+
+async function clickWeiboshiScoreButton(score) {
+  const validation = validateWeiboshiScore(score);
+  if (!validation.ok) {
+    logError('微博士:', validation.error);
+    return false;
+  }
+  const { scoreNum, scoreStr } = validation;
+
+  if (shouldUseWeiboshiHalfPoint(scoreNum)) {
+    ensureWeiboshiHalfPointMode(scoreNum);
+    await waitMs(250);
+  }
+
+  let scoreBtn = findWeiboshiScoreButton(scoreStr, scoreNum);
+  if (!scoreBtn && shouldUseWeiboshiHalfPoint(scoreNum)) {
+    await waitMs(500);
+    scoreBtn = findWeiboshiScoreButton(scoreStr, scoreNum);
+  }
+
+  if (!scoreBtn) {
+    return false;
+  }
+
+  log('微博士: 点击分数按钮提交', getWeiboshiElementText(scoreBtn));
+  clickWeiboshiElement(scoreBtn);
+  return true;
+}
+
+async function submitWeiboshiScoreByInput(score) {
+  const validation = validateWeiboshiScore(score);
+  if (!validation.ok) {
+    logError('微博士:', validation.error);
+    return false;
+  }
+  const { scoreStr } = validation;
+
+  const switchBtn = findWeiboshiInputModeButton();
+  if (switchBtn) {
+    log('微博士: 切换到输入打分模式');
+    clickWeiboshiElement(switchBtn);
+    await waitMs(300);
+  }
+
+  const input = findWeiboshiScoreInput();
+  if (!input) {
+    log('微博士: 输入打分模式下也未找到分数框');
+    return false;
+  }
+
+  fillScoreVue(input, scoreStr);
+  log('微博士: 按 Enter 提交输入分数');
+  pressEnterToSubmit(input);
+  return true;
+}
+
+function fillWeiboshiScore(score) {
+  const validation = validateWeiboshiScore(score);
+  if (!validation.ok) {
+    logError('微博士:', validation.error);
+    return false;
+  }
+  const { scoreNum, scoreStr } = validation;
+
+  const scoreBtn = findWeiboshiScoreButton(scoreStr, scoreNum);
+  if (!scoreBtn) {
+    return false;
+  }
+
+  clickWeiboshiElement(scoreBtn);
+  return true;
+}
+
+async function submitWeiboshiScoreAndVerify(score) {
+  log('微博士: 开始分数按钮提交流程，score=', score);
+  const validation = validateWeiboshiScore(score);
+  if (!validation.ok) {
+    logError('微博士:', validation.error);
+    return {
+      success: false,
+      error: validation.error
+    };
+  }
+
+  const before = getWeiboshiSubmissionState();
+  let submitted = await clickWeiboshiScoreButton(score);
+
+  if (!submitted) {
+    log('微博士: 未找到分数按钮，改用输入打分兜底');
+    submitted = await submitWeiboshiScoreByInput(score);
+  }
+
+  if (!submitted) {
+    return {
+      success: false,
+      error: '微博士未找到匹配分数按钮或输入打分框'
+    };
+  }
+
+  const result = await waitForWeiboshiSubmissionAdvanced(before, 6000);
+  if (!result.advanced) {
+    return {
+      success: false,
+      error: '微博士提交后页面未进入下一人/下一题，请检查是否弹出提示或分数按钮未生效'
+    };
+  }
+
+  return {
+    success: true,
+    autoNextAfterSubmit: true,
+    actualScore: validation.scoreStr,
+    maxScore: validation.maxScore
+  };
 }
 
 // 诊学网平台专用：使用"零分/满分"快捷按钮，优先走页面自己的赋分逻辑
@@ -777,14 +1230,14 @@ function fillScoreAspNet(input, scoreStr) {
     const scoListContainer = document.getElementById(`Mark_scoList_${queNum}`);
     if (scoListContainer) {
       const scoItems = Array.from(scoListContainer.querySelectorAll('span.sco_list'));
-      log(`✓ 找到分数列表容器 Mark_scoList_${queNum}, 共 ${scoItems.length} 项:`);
+      log(`✓ 找到分数列表容器 Mark_scoList_${queNum}, 共 ${scoItems.length} 项`);
       
       // 列出所有分数项
       scoItems.forEach((item, i) => {
         const val = item.getAttribute('value');
         const text = item.textContent.trim();
         const cls = item.className;
-        log(`  [${i}] value="${val}" text="${text}" class="${cls}"`);
+        logVerbose(`  [${i}] value="${val}" text="${text}" class="${cls}"`);
       });
       
       let bestMatch = null;
@@ -808,21 +1261,23 @@ function fillScoreAspNet(input, scoreStr) {
         log('>>> click() 完成');
         
         // 验证分数是否设入
-        setTimeout(() => {
-          log(`--- 填分后验证(100ms) ---`);
-          log(`  txt_que_${queNum}.value = "${input.value}" (期望: "${scoreStr}")`);
-          const hiddenSco = document.getElementById(`MarQueSubSco_${queNum}`);
-          if (hiddenSco) {
-            log(`  MarQueSubSco_${queNum}.value = "${hiddenSco.value}"`);
-          } else {
-            log(`  MarQueSubSco_${queNum}: 不存在`);
-          }
-          const queValInput = document.getElementById('queVal');
-          if (queValInput) {
-            log(`  queVal.value = "${queValInput.value}"`);
-          }
-          log(`--- 验证结束 ---`);
-        }, 100);
+        if (VERBOSE_LOG) {
+          setTimeout(() => {
+            logVerbose(`--- 填分后验证(100ms) ---`);
+            logVerbose(`  txt_que_${queNum}.value = "${input.value}" (期望: "${scoreStr}")`);
+            const hiddenSco = document.getElementById(`MarQueSubSco_${queNum}`);
+            if (hiddenSco) {
+              logVerbose(`  MarQueSubSco_${queNum}.value = "${hiddenSco.value}"`);
+            } else {
+              logVerbose(`  MarQueSubSco_${queNum}: 不存在`);
+            }
+            const queValInput = document.getElementById('queVal');
+            if (queValInput) {
+              logVerbose(`  queVal.value = "${queValInput.value}"`);
+            }
+            logVerbose(`--- 验证结束 ---`);
+          }, 100);
+        }
         
         return true;
       } else {
@@ -1162,15 +1617,15 @@ function clickSubmit(platform) {
   // 2. 搜索 <button> 元素（文本匹配"提交"）
   if (!submitBtn) {
     const allButtons = Array.from(document.querySelectorAll('button'));
-    log('页面button总数:', allButtons.length);
+    logVerbose('页面button总数:', allButtons.length);
     
-    log('--- 页面所有button列表 ---');
+    logVerbose('--- 页面所有button列表 ---');
     allButtons.forEach((b, i) => {
       const text = b.textContent.trim().replace(/\s+/g, ' ');
       const rect = b.getBoundingClientRect();
-      log(`  [${i}] text="${text}" | class="${b.className}" | pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
+      logVerbose(`  [${i}] text="${text}" | class="${b.className}" | pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
     });
-    log('--- button列表结束 ---');
+    logVerbose('--- button列表结束 ---');
     
     for (const btn of allButtons) {
       const text = btn.textContent.trim().replace(/\s+/g, '');
@@ -1191,14 +1646,14 @@ function clickSubmit(platform) {
   // 3. 搜索 <input> 元素（ASP.NET平台常见：input type=button/submit value=提交）
   if (!submitBtn) {
     const inputBtns = Array.from(document.querySelectorAll('input[type="button"], input[type="submit"]'));
-    log('页面input按钮总数:', inputBtns.length);
+    logVerbose('页面input按钮总数:', inputBtns.length);
     
-    log('--- 页面所有input按钮列表 ---');
+    logVerbose('--- 页面所有input按钮列表 ---');
     inputBtns.forEach((b, i) => {
       const rect = b.getBoundingClientRect();
-      log(`  [${i}] value="${b.value}" | id="${b.id}" | name="${b.name}" | pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
+      logVerbose(`  [${i}] value="${b.value}" | id="${b.id}" | name="${b.name}" | pos=(${Math.round(rect.left)},${Math.round(rect.top)})`);
     });
-    log('--- input按钮列表结束 ---');
+    logVerbose('--- input按钮列表结束 ---');
     
     for (const btn of inputBtns) {
       const val = (btn.value || '').trim();
@@ -1499,11 +1954,11 @@ function clickNext(platform) {
     logError('未找到下一份按钮/链接，平台:', platform);
     
     const allClickables = document.querySelectorAll('a, button, input[type="button"], input[type="submit"], [role="button"]');
-    log('页面上的可点击元素:', allClickables.length);
+    logVerbose('页面上的可点击元素:', allClickables.length);
     allClickables.forEach((el, i) => {
       const text = (el.tagName === 'INPUT' ? (el.value || '') : el.textContent).trim().substring(0, 30);
       if (text.includes('一份') || text.includes('一个') || text.includes('>>') || text.includes('»') || text.includes('下一')) {
-        log(`可点击元素${i}: tag="${el.tagName}", text="${text}", id="${el.id}"`);
+        logVerbose(`可点击元素${i}: tag="${el.tagName}", text="${text}", id="${el.id}"`);
       }
     });
     
@@ -1735,7 +2190,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'crop_image':
       // 裁剪图片
       cropImage(msg.dataUrl, msg.area)
-        .then(croppedUrl => sendResponse({ croppedUrl }))
+        .then(result => {
+          if (typeof result === 'string') {
+            sendResponse({ croppedUrl: result });
+            return;
+          }
+          sendResponse({ croppedUrl: result.url, imageMeta: result.meta });
+        })
         .catch(error => sendResponse({ error: error.message }));
       return true;
     
@@ -1751,12 +2212,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         log('平台配置:', JSON.stringify({
           isAspNet: platformConfig.isAspNet,
           autoNextAfterSubmit: platformConfig.autoNextAfterSubmit,
+          scoreButtonSubmit: platformConfig.scoreButtonSubmit,
           scoreInputSelectors: platformConfig.scoreInput,
           submitButtonSelectors: platformConfig.submitButton
         }));
         
+        if (msg.platform === 'weiboshi') {
+          setTimeout(async () => {
+            try {
+              const result = await submitWeiboshiScoreAndVerify(msg.score);
+              sendResponse(result);
+            } catch (error) {
+              logError('微博士提交出错:', error);
+              sendResponse({ success: false, error: error.message });
+            }
+          }, 100);
+          return true;
+        }
+
         // 页面状态快照
-        if (msg.platform === 'ameqp') {
+        if (VERBOSE_LOG && msg.platform === 'ameqp') {
           dumpAmeqpPageState();
         }
         

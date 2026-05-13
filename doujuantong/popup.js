@@ -1,7 +1,7 @@
 // popup.js - 负责UI交互和配置管理
 
 // ============ DOM元素 ============
-let platformZxwBtn, platformDnjyBtn, platformZhenxueBtn, platformAmeqpBtn, currentPlatformText;
+let platformZxwBtn, platformDnjyBtn, platformZhenxueBtn, platformAmeqpBtn, platformWeiboshiBtn, currentPlatformText;
 let selectBtn, startBtn, stopBtn, singleBtn, exportBtn;
 let promptInput, resultDiv, areaStatus, statusIndicator;
 let aiResultDiv, lastScoreBadge, reviewCountSpan, currentStatusSpan;
@@ -12,6 +12,8 @@ let currentPlatform = 'dnjy'; // 默认懂你教育
 let selectedArea = null;
 let isReviewing = false;
 let reviewCount = 0;
+const RUNTIME_MESSAGE_TIMEOUT = 10000;
+const TAB_MESSAGE_TIMEOUT = 20000;
 
 // ============ 日志函数 ============
 function log(...args) {
@@ -22,6 +24,89 @@ function logError(...args) {
   console.error('[香猫阅卷-Popup]', ...args);
 }
 
+function storageSet(data) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(data, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function sendRuntimeMessage(message, timeoutMs = RUNTIME_MESSAGE_TIMEOUT) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      settled = true;
+      reject(new Error(`后台无响应（${Math.round(timeoutMs / 1000)}秒）`));
+    }, timeoutMs);
+
+    chrome.runtime.sendMessage(message, (response) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
+
+function sendTabMessage(tabId, message, timeoutMs = TAB_MESSAGE_TIMEOUT) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      settled = true;
+      reject(new Error(`页面脚本无响应（${Math.round(timeoutMs / 1000)}秒）`));
+    }, timeoutMs);
+
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
+
+async function getActivePageTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.id) {
+    throw new Error('未找到活动标签页');
+  }
+  if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('devtools://'))) {
+    throw new Error('当前页面不支持插件操作');
+  }
+  return tab;
+}
+
+function debounce(fn, wait) {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+const savePromptDebounced = debounce((value) => {
+  storageSet({ lastPrompt: value }).catch(error => logError('保存提示词失败:', error));
+}, 300);
+
+const saveReviewLimitDebounced = debounce((limit) => {
+  storageSet({ reviewLimit: limit }).catch(error => logError('保存阅卷限制失败:', error));
+}, 300);
+
 // ============ 初始化 ============
 document.addEventListener('DOMContentLoaded', () => {
   log('Popup 初始化...');
@@ -31,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
   platformDnjyBtn = document.getElementById('platform-dnjy');
   platformZhenxueBtn = document.getElementById('platform-zhenxue');
   platformAmeqpBtn = document.getElementById('platform-ameqp');
+  platformWeiboshiBtn = document.getElementById('platform-weiboshi');
   currentPlatformText = document.getElementById('current-platform-text');
   selectBtn = document.getElementById('select-area');
   startBtn = document.getElementById('start-review');
@@ -108,6 +194,9 @@ function bindEvents() {
   if (platformAmeqpBtn) {
     platformAmeqpBtn.addEventListener('click', () => selectPlatform('ameqp'));
   }
+  if (platformWeiboshiBtn) {
+    platformWeiboshiBtn.addEventListener('click', () => selectPlatform('weiboshi'));
+  }
   
   // 选择区域
   if (selectBtn) {
@@ -132,7 +221,7 @@ function bindEvents() {
   // 提示词变化
   if (promptInput) {
     promptInput.addEventListener('input', (e) => {
-      chrome.storage.local.set({ lastPrompt: e.target.value });
+      savePromptDebounced(e.target.value);
     });
   }
   
@@ -145,7 +234,7 @@ function bindEvents() {
   if (reviewLimitInput) {
     reviewLimitInput.addEventListener('change', (e) => {
       const limit = parseInt(e.target.value) || 0;
-      chrome.storage.local.set({ reviewLimit: limit });
+      saveReviewLimitDebounced(limit);
       updateReviewCount();  // 更新显示
       log('阅卷限制设置为:', limit);
     });
@@ -207,12 +296,12 @@ function loadConfig() {
     }
     
     // 从background获取当前记录数
-    chrome.runtime.sendMessage({ action: 'get_records' }, (response) => {
+    sendRuntimeMessage({ action: 'get_records' }).then((response) => {
       if (response && response.count !== undefined) {
         reviewCount = response.count;
         updateReviewCount();
       }
-    });
+    }).catch(error => logError('获取记录数失败:', error));
     
     // 加载上次AI结果
     if (data.lastAIResult) {
@@ -224,15 +313,15 @@ function loadConfig() {
 // ============ 平台选择 ============
 function selectPlatform(platform) {
   currentPlatform = platform;
-  chrome.storage.local.set({ currentPlatform });
+  storageSet({ currentPlatform }).catch(error => logError('保存平台失败:', error));
   updatePlatformButtons();
   log('切换平台:', platform);
   
   // 通知background更新平台
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     action: 'update_config',
     platform: platform
-  });
+  }).catch(error => logError('更新后台平台失败:', error));
   
   // 选择后自动折叠
   const platformSection = document.getElementById('platform-header')?.parentElement;
@@ -245,7 +334,8 @@ const PLATFORM_NAMES = {
   zxw: '智学网',
   dnjy: '懂你教育',
   zhenxue: '诊学网',
-  ameqp: 'AMEQP'
+  ameqp: 'AMEQP',
+  weiboshi: '微博士'
 };
 
 function updatePlatformButtons() {
@@ -260,6 +350,9 @@ function updatePlatformButtons() {
   }
   if (platformAmeqpBtn) {
     platformAmeqpBtn.classList.toggle('active', currentPlatform === 'ameqp');
+  }
+  if (platformWeiboshiBtn) {
+    platformWeiboshiBtn.classList.toggle('active', currentPlatform === 'weiboshi');
   }
   
   if (currentPlatformText) {
@@ -289,34 +382,20 @@ async function onSelectArea() {
   updateCurrentStatus('请在页面上选择区域...');
   
   try {
-    // 获取当前标签页
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
-      updateCurrentStatus('错误: 未找到活动标签页');
-      return;
+    const tab = await getActivePageTab();
+    const response = await sendTabMessage(tab.id, { action: 'select_area' });
+    if (response && response.success) {
+      selectedArea = response.area;
+      updateAreaStatus(true);
+      updateCurrentStatus('区域选择成功');
+      log('区域选择完成:', response.area);
+    } else {
+      updateCurrentStatus(response?.error || '已取消');
     }
-    
-    // 发送选择区域消息
-    chrome.tabs.sendMessage(tab.id, { action: 'select_area' }, (response) => {
-      if (chrome.runtime.lastError) {
-        logError('发送消息失败:', chrome.runtime.lastError);
-        updateCurrentStatus('请刷新页面后重试');
-        return;
-      }
-      
-      if (response && response.success) {
-        selectedArea = response.area;
-        updateAreaStatus(true);
-        updateCurrentStatus('区域选择成功');
-        log('区域选择完成:', response.area);
-      } else {
-        updateCurrentStatus(response?.error || '已取消');
-      }
-    });
     
   } catch (error) {
     logError('选择区域出错:', error);
-    updateCurrentStatus('错误: ' + error.message);
+    updateCurrentStatus(error.message.includes('Receiving end') ? '请刷新页面后重试' : '错误: ' + error.message);
   }
 }
 
@@ -340,18 +419,13 @@ async function onStartReview() {
   const reviewLimit = parseInt(reviewLimitInput?.value) || 0;
   
   try {
-    // 获取当前标签页
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
-      updateCurrentStatus('未找到活动标签页');
-      return;
-    }
+    const tab = await getActivePageTab();
     
     updateCurrentStatus('正在启动...');
     updateReviewStatus(true);
     
     // 发送开始阅卷消息给background
-    chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage({
       action: 'start_review',
       config: {
         area: selectedArea,
@@ -360,23 +434,16 @@ async function onStartReview() {
         tabId: tab.id,
         limit: reviewLimit  // 传递阅卷次数限制
       }
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        logError('启动阅卷失败:', chrome.runtime.lastError);
-        updateCurrentStatus('启动失败');
-        updateReviewStatus(false);
-        return;
-      }
-      
-      if (response && response.success) {
-        const limitText = reviewLimit > 0 ? `（限制${reviewLimit}份）` : '';
-        updateCurrentStatus(`自动阅卷中...${limitText}`);
-        log('阅卷启动成功，限制:', reviewLimit);
-      } else {
-        updateCurrentStatus('启动失败: ' + (response?.error || '未知错误'));
-        updateReviewStatus(false);
-      }
     });
+
+    if (response && response.success) {
+      const limitText = reviewLimit > 0 ? `（限制${reviewLimit}份）` : '';
+      updateCurrentStatus(`自动阅卷中...${limitText}`);
+      log('阅卷启动成功，限制:', reviewLimit);
+    } else {
+      updateCurrentStatus('启动失败: ' + (response?.error || '未知错误'));
+      updateReviewStatus(false);
+    }
     
   } catch (error) {
     logError('开始阅卷出错:', error);
@@ -386,20 +453,18 @@ async function onStartReview() {
 }
 
 // ============ 停止阅卷 ============
-function onStopReview() {
+async function onStopReview() {
   log('停止阅卷...');
   
-  chrome.runtime.sendMessage({ action: 'stop_review' }, (response) => {
-    if (chrome.runtime.lastError) {
-      logError('停止阅卷失败:', chrome.runtime.lastError);
-      updateCurrentStatus('停止失败');
-      return;
-    }
-    
+  try {
+    await sendRuntimeMessage({ action: 'stop_review' });
     updateCurrentStatus('已停止');
     updateReviewStatus(false);
     log('阅卷停止成功');
-  });
+  } catch (error) {
+    logError('停止阅卷失败:', error);
+    updateCurrentStatus('停止失败');
+  }
 }
 
 // ============ 单次阅卷 ============
@@ -419,12 +484,7 @@ async function onSingleReview() {
   }
   
   try {
-    // 获取当前标签页
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
-      updateCurrentStatus('未找到活动标签页');
-      return;
-    }
+    const tab = await getActivePageTab();
     
     updateCurrentStatus('正在阅卷...');
     
@@ -432,7 +492,7 @@ async function onSingleReview() {
     if (singleBtn) singleBtn.disabled = true;
     
     // 发送单次阅卷消息
-    chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage({
       action: 'single_review',
       config: {
         area: selectedArea,
@@ -440,42 +500,29 @@ async function onSingleReview() {
         platform: currentPlatform,
         tabId: tab.id
       }
-    }, (response) => {
-      // 重新启用按钮
-      if (singleBtn) singleBtn.disabled = false;
-      
-      if (chrome.runtime.lastError) {
-        logError('单次阅卷失败:', chrome.runtime.lastError);
-        updateCurrentStatus('阅卷失败');
-        return;
-      }
-      
-      if (response && response.success) {
-        updateAIResult(response.result, response.score);
-        updateCurrentStatus('阅卷完成');
-        reviewCount++;
-        updateReviewCount();
-        log('单次阅卷完成:', response);
-      } else {
-        updateCurrentStatus('失败: ' + (response?.error || '未知错误'));
-      }
-    });
+    }, 150000);
+
+    if (response && response.success) {
+      updateAIResult(response.result, response.score);
+      updateCurrentStatus('阅卷完成');
+      reviewCount++;
+      updateReviewCount();
+      log('单次阅卷完成:', response);
+    } else {
+      updateCurrentStatus('失败: ' + (response?.error || '未知错误'));
+    }
     
   } catch (error) {
     logError('单次阅卷出错:', error);
     updateCurrentStatus('错误: ' + error.message);
+  } finally {
     if (singleBtn) singleBtn.disabled = false;
   }
 }
 
 // ============ 状态管理 ============
 function getReviewStatus() {
-  chrome.runtime.sendMessage({ action: 'get_status' }, (response) => {
-    if (chrome.runtime.lastError) {
-      log('获取状态失败（可能是首次启动）');
-      return;
-    }
-    
+  sendRuntimeMessage({ action: 'get_status' }).then((response) => {
     if (response) {
       isReviewing = response.isActive;
       updateReviewStatus(response.isActive);
@@ -506,7 +553,7 @@ function getReviewStatus() {
         updateReviewCount();
       }
     }
-  });
+  }).catch(error => log('获取状态失败（可能是首次启动）', error.message));
 }
 
 function updateReviewStatus(active) {
@@ -559,8 +606,6 @@ function updateReviewCount() {
       limitDisplay.textContent = '';
     }
   }
-  
-  chrome.storage.local.set({ reviewCount });
 }
 
 // 更新AI结果
@@ -581,9 +626,9 @@ function updateAIResult(result, score) {
   }
   
   // 保存到storage
-  chrome.storage.local.set({
+  storageSet({
     lastAIResult: { result, score }
-  });
+  }).catch(error => logError('保存AI结果失败:', error));
 }
 
 // 追加日志
@@ -607,14 +652,9 @@ function showResult(text) {
 async function onExportRecords() {
   log('导出阅卷记录...');
   
-  // 从background获取记录
-  chrome.runtime.sendMessage({ action: 'get_records' }, (response) => {
-    if (chrome.runtime.lastError) {
-      logError('获取记录失败:', chrome.runtime.lastError);
-      updateCurrentStatus('获取记录失败');
-      return;
-    }
-    
+  try {
+    // 从background获取记录
+    const response = await sendRuntimeMessage({ action: 'get_records' });
     const records = response?.records || [];
     const sessionStart = response?.sessionStartTime;
     
@@ -632,7 +672,10 @@ async function onExportRecords() {
     
     updateCurrentStatus(`已导出 ${records.length} 条记录`);
     log('导出完成，共', records.length, '条记录');
-  });
+  } catch (error) {
+    logError('获取记录失败:', error);
+    updateCurrentStatus('获取记录失败');
+  }
 }
 
 // 生成导出内容

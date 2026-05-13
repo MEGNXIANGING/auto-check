@@ -5,6 +5,7 @@
   "description": "帮助老师智能阅卷和评分的 Chrome 插件",
   "permissions": [
     "activeTab",
+    "alarms",
     "scripting",
     "storage",
     "tabs"
