@@ -568,6 +568,303 @@ function findVisibleClickableByText(text, options = {}) {
   return candidates[0] || null;
 }
 
+function normalizeSnapshotText(text, maxLen = 180) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function getElementSnapshotToken(el) {
+  if (!el) return '';
+
+  const tagName = (el.tagName || '').toUpperCase();
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA') {
+    return normalizeSnapshotText([
+      tagName,
+      el.id,
+      el.name,
+      el.placeholder,
+      el.value
+    ].filter(Boolean).join('|'));
+  }
+
+  if (tagName === 'IMG') {
+    const src = el.currentSrc || el.src || '';
+    return normalizeSnapshotText([
+      'IMG',
+      src ? src.slice(-80) : '',
+      el.alt || '',
+      `${el.naturalWidth || 0}x${el.naturalHeight || 0}`
+    ].filter(Boolean).join('|'));
+  }
+
+  if (tagName === 'CANVAS') {
+    return `CANVAS|${el.width || 0}x${el.height || 0}`;
+  }
+
+  const textToken = normalizeSnapshotText(el.textContent || '');
+  if (textToken) {
+    return textToken;
+  }
+
+  return normalizeSnapshotText([
+    tagName,
+    el.id,
+    typeof el.className === 'string' ? el.className : ''
+  ].filter(Boolean).join('|'));
+}
+
+function getViewportSignature() {
+  const sampleRatios = [
+    [0.5, 0.35],
+    [0.5, 0.5],
+    [0.5, 0.65],
+    [0.3, 0.5],
+    [0.7, 0.5]
+  ];
+  const tokens = [];
+
+  for (const [ratioX, ratioY] of sampleRatios) {
+    const x = Math.max(1, Math.min(window.innerWidth - 1, Math.round(window.innerWidth * ratioX)));
+    const y = Math.max(1, Math.min(window.innerHeight - 1, Math.round(window.innerHeight * ratioY)));
+    const elements = document.elementsFromPoint
+      ? document.elementsFromPoint(x, y)
+      : [document.elementFromPoint(x, y)].filter(Boolean);
+
+    for (const el of elements) {
+      if (!isVisibleElement(el)) continue;
+      const token = getElementSnapshotToken(el);
+      if (token && token.length >= 4) {
+        tokens.push(token);
+        break;
+      }
+    }
+  }
+
+  return Array.from(new Set(tokens)).join(' || ').slice(0, 320);
+}
+
+function getVisibleInputSignature(limit = 6) {
+  const inputs = Array.from(document.querySelectorAll('input, textarea'))
+    .filter(el => {
+      const type = (el.type || '').toLowerCase();
+      return type !== 'hidden' && isVisibleElement(el);
+    })
+    .sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return ar.top - br.top || ar.left - br.left;
+    })
+    .slice(0, limit);
+
+  return inputs.map(el => normalizeSnapshotText([
+    el.tagName,
+    el.id,
+    el.name,
+    el.placeholder,
+    el.value
+  ].filter(Boolean).join('|'), 120)).join(' || ');
+}
+
+function getVisibleDialogText() {
+  const candidates = Array.from(document.querySelectorAll(
+    '.messager-window .messager-body, .panel.window .messager-body, .el-message-box__message, [role="alertdialog"], [role="dialog"]'
+  )).filter(isVisibleElement);
+
+  return normalizeSnapshotText(
+    candidates
+      .map(el => el.textContent || '')
+      .filter(Boolean)
+      .join(' | '),
+    240
+  );
+}
+
+function getAmeqpReviewState() {
+  const scoreInputs = Array.from(document.querySelectorAll('input.mark_tbx, input[id^="txt_que_"]'))
+    .filter(isVisibleElement)
+    .slice(0, 8)
+    .map(inp => normalizeSnapshotText([
+      inp.id,
+      inp.name,
+      inp.getAttribute('maxsco'),
+      inp.value
+    ].filter(Boolean).join('|'), 80))
+    .join(' || ');
+
+  const hiddenSignature = Array.from(document.querySelectorAll('input[id^="MarQueSubSco_"], input#queVal'))
+    .slice(0, 8)
+    .map(inp => normalizeSnapshotText(`${inp.id}:${inp.value}`, 60))
+    .join(' || ');
+
+  return {
+    href: location.href,
+    title: document.title,
+    viewportSignature: getViewportSignature(),
+    scoreSignature: scoreInputs || getVisibleInputSignature(6),
+    hiddenSignature,
+    dialogText: getVisibleDialogText()
+  };
+}
+
+function getGenericReviewState() {
+  return {
+    href: location.href,
+    title: document.title,
+    viewportSignature: getViewportSignature(),
+    scoreSignature: getVisibleInputSignature(6)
+  };
+}
+
+function getReviewPageState(platform) {
+  switch (platform) {
+    case 'weiboshi':
+      return {
+        ...getWeiboshiSubmissionState(),
+        href: location.href,
+        viewportSignature: getViewportSignature()
+      };
+    case 'zhenxue':
+      return {
+        ...getZhenxueSubmissionState(),
+        href: location.href,
+        viewportSignature: getViewportSignature()
+      };
+    case 'ameqp':
+      return getAmeqpReviewState();
+    default:
+      return getGenericReviewState();
+  }
+}
+
+function hasSnapshotValueChanged(before, after, key) {
+  return !!before?.[key] && !!after?.[key] && before[key] !== after[key];
+}
+
+function hasMeaningfulViewportChange(before, after) {
+  if (!hasSnapshotValueChanged(before, after, 'viewportSignature')) {
+    return false;
+  }
+  return (before.viewportSignature || '').length >= 12 || (after.viewportSignature || '').length >= 12;
+}
+
+function hasReviewPageAdvanced(platform, before, after) {
+  if (!before || !after) return false;
+  if (hasSnapshotValueChanged(before, after, 'href')) return true;
+  if (hasSnapshotValueChanged(before, after, 'title')) return true;
+
+  if (platform === 'weiboshi' && hasWeiboshiSubmissionAdvanced(before, after)) {
+    return true;
+  }
+
+  if (platform === 'zhenxue' && hasZhenxueSubmissionAdvanced(before, after)) {
+    return true;
+  }
+
+  if (platform === 'ameqp') {
+    if (after.dialogText) return true;
+    if (hasSnapshotValueChanged(before, after, 'hiddenSignature')) return true;
+  }
+
+  if (hasSnapshotValueChanged(before, after, 'scoreSignature')) return true;
+  if (hasMeaningfulViewportChange(before, after)) return true;
+  return false;
+}
+
+function waitForReviewPageAdvance(platform, beforeState, maxWaitMs = 2000, intervalMs = 250) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+
+    function check() {
+      const afterState = getReviewPageState(platform);
+      if (hasReviewPageAdvanced(platform, beforeState, afterState)) {
+        log(`${platform}: 检测到页面已前进`, JSON.stringify({ beforeState, afterState }));
+        resolve({ advanced: true, currentState: afterState });
+        return;
+      }
+
+      if (Date.now() - startedAt >= maxWaitMs) {
+        resolve({ advanced: false, currentState: afterState });
+        return;
+      }
+
+      setTimeout(check, intervalMs);
+    }
+
+    check();
+  });
+}
+
+async function waitForPostSubmitProgress(platform, beforeState, maxWaitMs = 5000) {
+  const startedAt = Date.now();
+  const intervalMs = 300;
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    if (platform === 'ameqp') {
+      const dialogText = dismissEasyUIDialog();
+      if (dialogText) {
+        return {
+          advanced: true,
+          dismissed: true,
+          dialogText,
+          isLastPaper: dialogText.includes('最后一份') || dialogText.includes('没有试卷') || dialogText.includes('已全部'),
+          currentState: getReviewPageState(platform)
+        };
+      }
+    }
+
+    const currentState = getReviewPageState(platform);
+    if (hasReviewPageAdvanced(platform, beforeState, currentState)) {
+      return {
+        advanced: true,
+        dismissed: false,
+        dialogText: currentState.dialogText || '',
+        isLastPaper: false,
+        currentState
+      };
+    }
+
+    await waitMs(intervalMs);
+  }
+
+  return {
+    advanced: false,
+    dismissed: false,
+    dialogText: '',
+    isLastPaper: false,
+    currentState: getReviewPageState(platform)
+  };
+}
+
+async function advanceToNext(platform, clickWindowMs = 3000, advanceWaitMs = 2200) {
+  const beforeState = getReviewPageState(platform);
+  const startedAt = Date.now();
+  let clicked = false;
+
+  while (Date.now() - startedAt < clickWindowMs) {
+    clicked = clickNext(platform, { silent: true });
+    if (clicked) {
+      break;
+    }
+    await waitMs(250);
+  }
+
+  if (!clicked) {
+    return {
+      success: false,
+      error: '未找到下一份按钮'
+    };
+  }
+
+  const advanceResult = await waitForReviewPageAdvance(platform, beforeState, advanceWaitMs, 250);
+  return {
+    success: true,
+    advanced: advanceResult.advanced,
+    currentState: advanceResult.currentState
+  };
+}
+
 // 填入分数（增强版，确保Vue能检测到变化）
 function fillScore(score, platform) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
@@ -1878,9 +2175,10 @@ function findZhenxueNextButton() {
 }
 
 // 点击下一份按钮
-function clickNext(platform) {
+function clickNext(platform, options = {}) {
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.dnjy;
   const nextTexts = config.nextButtonText || ['下一份', '下一个', '下一题'];
+  const silent = options.silent === true;
   
   let element = null;
   
@@ -1951,7 +2249,9 @@ function clickNext(platform) {
   }
   
   if (!element) {
-    logError('未找到下一份按钮/链接，平台:', platform);
+    if (!silent) {
+      logError('未找到下一份按钮/链接，平台:', platform);
+    }
     
     const allClickables = document.querySelectorAll('a, button, input[type="button"], input[type="submit"], [role="button"]');
     logVerbose('页面上的可点击元素:', allClickables.length);
@@ -2268,6 +2568,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
 
           // === AMEQP 流程：填分 → 提交 → 立即返回（弹窗检测由 background.js 在等待后执行） ===
+          const postSubmitState = msg.platform === 'ameqp'
+            ? getReviewPageState(msg.platform)
+            : null;
           setTimeout(() => {
             log('步骤2(AMEQP): 点击提交按钮');
             const submitted = clickSubmit(msg.platform);
@@ -2282,7 +2585,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             log('========== 填分提交完成(AMEQP)，等待 background 检测弹窗 ==========');
             sendResponse({
               success: true,
-              autoNextAfterSubmit: true
+              autoNextAfterSubmit: true,
+              postSubmitState
             });
           }, 300);
         } else {
@@ -2335,6 +2639,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
       return false;
+
+    case 'advance_to_next':
+      try {
+        advanceToNext(msg.platform, msg.clickWindowMs, msg.advanceWaitMs)
+          .then(sendResponse)
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      } catch (error) {
+        logError('自适应切换下一份出错:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+      return true;
     
     case 'fill_score':
       // 仅填分（不提交）
@@ -2345,6 +2660,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
       return false;
+
+    case 'wait_for_post_submit_progress':
+      waitForPostSubmitProgress(msg.platform, msg.beforeState, msg.timeoutMs)
+        .then(result => sendResponse({ success: true, ...result }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
     
     case 'dismiss_dialog':
       // 检测并关闭弹窗（AMEQP EasyUI + Element UI）

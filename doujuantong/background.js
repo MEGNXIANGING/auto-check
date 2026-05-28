@@ -34,6 +34,7 @@ let pendingStatePersistReason = '';
 const MIN_CAPTURE_INTERVAL = 2000; // 截图最小间隔（毫秒）
 const SUBMIT_DELAY = 3000;         // 提交后等待时间（包含弹窗处理）
 const NEXT_PAGE_DELAY = 2000;      // 切换下一份的等待时间
+const PAGE_ADVANCE_TIMEOUT = 2200; // 下一份切换后的页面前进检测窗口
 const API_TIMEOUT = 120000;        // AI 接口硬超时，覆盖响应头和响应体读取
 const CAPTURE_TIMEOUT = 12000;     // 截图硬超时
 const CROP_TIMEOUT = 20000;        // 裁剪硬超时
@@ -274,14 +275,17 @@ function getRetryDelayMs(retryCount) {
   return Math.min(30000, MIN_CAPTURE_INTERVAL * Math.pow(2, count - 1));
 }
 
+function getCaptureWaitMs() {
+  return Math.max(0, MIN_CAPTURE_INTERVAL - (Date.now() - reviewState.lastCaptureTime));
+}
+
 // 检查是否可以截图（节流控制）
 function canCapture() {
-  const now = Date.now();
-  if (now - reviewState.lastCaptureTime < MIN_CAPTURE_INTERVAL) {
-    log('截图过于频繁，等待中...');
+  const waitMs = getCaptureWaitMs();
+  if (waitMs > 0) {
+    log(`截图过于频繁，等待中... (${waitMs}ms)`);
     return false;
   }
-  reviewState.lastCaptureTime = now;
   return true;
 }
 
@@ -588,6 +592,24 @@ async function executeReviewCycle(trigger = 'direct') {
   reviewCycleRunning = true;
   ensureReviewWatchdog();
   let nextDelayMs = null;
+  const cycleStartedAt = Date.now();
+  const phaseTimings = {
+    throttleWaitMs: 0,
+    captureMs: 0,
+    cropMs: 0,
+    aiMs: 0,
+    submitMs: 0,
+    transitionMs: 0
+  };
+
+  async function timePhase(key, fn) {
+    const startedAt = Date.now();
+    try {
+      return await fn();
+    } finally {
+      phaseTimings[key] = Date.now() - startedAt;
+    }
+  }
 
   try {
     // 检查是否达到阅卷次数限制
@@ -618,21 +640,24 @@ async function executeReviewCycle(trigger = 'direct') {
 
     // 3. 检查截图节流
     if (!canCapture()) {
-      await delay(MIN_CAPTURE_INTERVAL);
+      const captureWaitMs = getCaptureWaitMs();
+      phaseTimings.throttleWaitMs = captureWaitMs;
+      await delay(captureWaitMs);
       if (!reviewState.isActive) return;
     }
+    reviewState.lastCaptureTime = Date.now();
 
     // 4. 截图（指定目标标签页）
-    const fullScreenshot = await captureVisibleTab(reviewState.currentTabId);
+    const fullScreenshot = await timePhase('captureMs', () => captureVisibleTab(reviewState.currentTabId));
     if (!reviewState.isActive) return;
 
     // 5. 裁剪图片
     broadcastStatus('正在裁剪图片...');
-    const croppedImage = await cropImage(
+    const croppedImage = await timePhase('cropMs', () => cropImage(
       reviewState.currentTabId,
       fullScreenshot,
       reviewState.selectedArea
-    );
+    ));
     if (croppedImage.meta) {
       broadcastStatus(`图片已压缩: ${croppedImage.meta.width}x${croppedImage.meta.height} / ${Math.round((croppedImage.meta.bytes || 0) / 1024)}KB`);
     }
@@ -640,7 +665,7 @@ async function executeReviewCycle(trigger = 'direct') {
 
     // 6. 调用AI评分
     broadcastStatus('正在AI评分...');
-    const apiResult = await callDoubaoAPI(reviewState.prompt, croppedImage.url);
+    const apiResult = await timePhase('aiMs', () => callDoubaoAPI(reviewState.prompt, croppedImage.url));
     if (!reviewState.isActive) return;
 
     // 7. 解析评分结果
@@ -671,7 +696,7 @@ async function executeReviewCycle(trigger = 'direct') {
 
     // 9. 填分并提交
     broadcastStatus(`填入分数: ${score}，提交中...`);
-    const submitResult = await fillScoreAndSubmit(reviewState.currentTabId, score);
+    const submitResult = await timePhase('submitMs', () => fillScoreAndSubmit(reviewState.currentTabId, score));
     if (!reviewState.isActive) return;
     const recordedScore = submitResult?.actualScore || score;
     if (String(recordedScore) !== String(score)) {
@@ -683,56 +708,102 @@ async function executeReviewCycle(trigger = 'direct') {
 
     if (reviewState.platform === 'ameqp') {
       // AMEQP 弹窗处理循环:
-      //   提交 → 等待 → 检测弹窗 → 如果是确认弹窗(如"分值偏低") → 点确定 → 再等待 → 再检测
+      //   提交 → 轮询等待页面响应/弹窗 → 如果是确认弹窗(如"分值偏低") → 点确定 → 再等待 → 再检测
       //   直到: 无弹窗(正常继续) 或 "最后一份"(停止)
       const MAX_DIALOG_ROUNDS = 3;
-      for (let round = 1; round <= MAX_DIALOG_ROUNDS; round++) {
-        const waitMs = round === 1 ? AMEQP_PAGE_LOAD_DELAY : AMEQP_AFTER_CONFIRM_DELAY;
-        log(`AMEQP: 弹窗检测第${round}轮，等待 ${waitMs}ms...`);
-        broadcastStatus(round === 1 ? '提交成功，等待页面响应...' : '确认弹窗已处理，等待实际提交...');
-        await delay(waitMs);
-        if (!reviewState.isActive) return;
+      let ameqpProbeState = submitResult?.postSubmitState || null;
+      phaseTimings.transitionMs = Date.now();
 
-        log(`AMEQP: 第${round}轮等待结束，检测弹窗...`);
-        const dialogResult = await checkAmeqpDialog(reviewState.currentTabId);
-        log(`AMEQP: 第${round}轮弹窗结果:`, JSON.stringify(dialogResult));
+      try {
+        for (let round = 1; round <= MAX_DIALOG_ROUNDS; round++) {
+          const waitMs = round === 1 ? AMEQP_PAGE_LOAD_DELAY : AMEQP_AFTER_CONFIRM_DELAY;
+          log(`AMEQP: 第${round}轮等待页面响应，最长 ${waitMs}ms`);
+          broadcastStatus(round === 1 ? '提交成功，等待页面响应...' : '确认弹窗已处理，等待实际提交...');
 
-        if (dialogResult && dialogResult.isLastPaper) {
-          log('★★★ 已经是最后一份试卷，自动停止 ★★★');
-          broadcastAIResult(responseText, recordedScore);
-          reviewState.retryCount = 0;
-          reviewState.commRetryCount = 0;
-          reviewState.lastError = null;
-          broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
-          stopReview('最后一份试卷');
-          return;
+          const progressResult = await waitForPostSubmitProgress(
+            reviewState.currentTabId,
+            reviewState.platform,
+            ameqpProbeState,
+            waitMs
+          );
+          if (!reviewState.isActive) return;
+
+          log(`AMEQP: 第${round}轮进度结果:`, JSON.stringify(progressResult));
+
+          if (progressResult && progressResult.isLastPaper) {
+            log('★★★ 已经是最后一份试卷，自动停止 ★★★');
+            broadcastAIResult(responseText, recordedScore);
+            reviewState.retryCount = 0;
+            reviewState.commRetryCount = 0;
+            reviewState.lastError = null;
+            broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
+            stopReview('最后一份试卷');
+            return;
+          }
+
+          if (progressResult?.dismissed) {
+            log(`AMEQP: 第${round}轮处理了弹窗: "${progressResult.dialogText}"，继续检测实际提交结果`);
+            ameqpProbeState = progressResult.currentState || ameqpProbeState;
+            continue;
+          }
+
+          log(`AMEQP: 第${round}轮页面已就绪，继续下一份`);
+          break;
         }
+      } catch (error) {
+        logError('AMEQP 自适应等待失败，回退旧弹窗检测:', error.message || error);
+        for (let round = 1; round <= MAX_DIALOG_ROUNDS; round++) {
+          const waitMs = round === 1 ? AMEQP_PAGE_LOAD_DELAY : AMEQP_AFTER_CONFIRM_DELAY;
+          await delay(waitMs);
+          if (!reviewState.isActive) return;
 
-        if (dialogResult && dialogResult.dismissed) {
-          // 弹窗已处理(如"分值偏低确认")，点确定后会触发真正的AJAX提交
-          // 继续下一轮等待+检测
-          log(`AMEQP: 第${round}轮处理了弹窗: "${dialogResult.dialogText}"，继续检测...`);
-          continue;
+          const dialogResult = await checkAmeqpDialog(reviewState.currentTabId);
+          if (dialogResult && dialogResult.isLastPaper) {
+            log('★★★ 已经是最后一份试卷，自动停止 ★★★');
+            broadcastAIResult(responseText, recordedScore);
+            reviewState.retryCount = 0;
+            reviewState.commRetryCount = 0;
+            reviewState.lastError = null;
+            broadcastStatus(`已完成 ${reviewRecords.length} 份阅卷（已是最后一份试卷），自动停止`);
+            stopReview('最后一份试卷');
+            return;
+          }
+          if (dialogResult && dialogResult.dismissed) {
+            continue;
+          }
+          break;
         }
-
-        // 无弹窗，正常继续下一份
-        log(`AMEQP: 第${round}轮无弹窗，页面已就绪，继续下一份`);
-        break;
+      } finally {
+        phaseTimings.transitionMs = Date.now() - phaseTimings.transitionMs;
       }
     } else if (isAutoNext) {
-      broadcastStatus('提交成功，等待下一份加载...');
-      await delay(NEXT_PAGE_DELAY);
-      if (!reviewState.isActive) return;
+      if (reviewState.platform === 'zhenxue' || reviewState.platform === 'weiboshi') {
+        broadcastStatus('提交成功，页面已进入下一份');
+        phaseTimings.transitionMs = 0;
+      } else {
+        broadcastStatus('提交成功，等待下一份加载...');
+        phaseTimings.transitionMs = Date.now();
+        await delay(NEXT_PAGE_DELAY);
+        phaseTimings.transitionMs = Date.now() - phaseTimings.transitionMs;
+        if (!reviewState.isActive) return;
+      }
     } else {
       // 其他平台: 需要手动点击"下一份"按钮
       broadcastStatus('提交成功，准备下一份...');
-      await delay(SUBMIT_DELAY);
+      phaseTimings.transitionMs = Date.now();
+      const nextResult = await advanceToNextPaper(reviewState.currentTabId);
       if (!reviewState.isActive) return;
 
-      await clickNextButton(reviewState.currentTabId);
-      if (!reviewState.isActive) return;
-
-      await delay(NEXT_PAGE_DELAY);
+      if (nextResult?.success && nextResult.advanced) {
+        broadcastStatus('已切换到下一份');
+      } else if (nextResult?.success) {
+        broadcastStatus('下一份切换完成，等待页面稳定...');
+        if (!nextResult.legacyFallback) {
+          await delay(NEXT_PAGE_DELAY);
+          if (!reviewState.isActive) return;
+        }
+      }
+      phaseTimings.transitionMs = Date.now() - phaseTimings.transitionMs;
     }
 
     if (!reviewState.isActive) return;
@@ -743,9 +814,22 @@ async function executeReviewCycle(trigger = 'direct') {
     reviewState.commRetryCount = 0;
     reviewState.lastError = null;
     nextDelayMs = 0;
+    log(
+      '本题耗时统计:',
+      `total=${Date.now() - cycleStartedAt}ms`,
+      `throttle=${phaseTimings.throttleWaitMs}ms`,
+      `capture=${phaseTimings.captureMs}ms`,
+      `crop=${phaseTimings.cropMs}ms`,
+      `ai=${phaseTimings.aiMs}ms`,
+      `submit=${phaseTimings.submitMs}ms`,
+      `transition=${phaseTimings.transitionMs}ms`
+    );
 
   } catch (error) {
-    logError('阅卷出错:', error);
+    logError('阅卷出错:', error, 'timings=', JSON.stringify({
+      ...phaseTimings,
+      totalMs: Date.now() - cycleStartedAt
+    }));
     if (!reviewState.isActive) return;
 
     const errMsg = error.message || '';
@@ -911,6 +995,67 @@ async function clickNextButton(tabId) {
 
   logError('点击下一份失败:', response?.error);
   throw new Error(response?.error || '点击下一份失败');
+}
+
+async function waitForPostSubmitProgress(tabId, platform, beforeState, timeoutMs) {
+  const response = await sendTabMessageWithTimeout(
+    tabId,
+    {
+      action: 'wait_for_post_submit_progress',
+      platform,
+      beforeState,
+      timeoutMs
+    },
+    '提交后状态确认',
+    Math.max(SHORT_MESSAGE_TIMEOUT, timeoutMs + 3000)
+  );
+
+  if (response && response.success) {
+    return response;
+  }
+
+  throw new Error(response?.error || '提交后状态确认失败');
+}
+
+async function advanceToNextPaper(tabId) {
+  try {
+    const response = await sendTabMessageWithTimeout(
+      tabId,
+      {
+        action: 'advance_to_next',
+        platform: reviewState.platform,
+        clickWindowMs: SUBMIT_DELAY,
+        advanceWaitMs: PAGE_ADVANCE_TIMEOUT
+      },
+      '切换下一份',
+      Math.max(SHORT_MESSAGE_TIMEOUT, SUBMIT_DELAY + PAGE_ADVANCE_TIMEOUT + 3000)
+    );
+
+    if (response && response.success) {
+      log('自适应切换下一份完成:', JSON.stringify(response));
+      return response;
+    }
+
+    throw new Error(response?.error || '自适应切换下一份失败');
+  } catch (error) {
+    logError('自适应切换下一份失败，回退旧流程:', error.message || error);
+    await delay(SUBMIT_DELAY);
+    if (!reviewState.isActive) {
+      return { success: false, advanced: false, legacyFallback: true };
+    }
+
+    await clickNextButton(tabId);
+    if (!reviewState.isActive) {
+      return { success: false, advanced: false, legacyFallback: true };
+    }
+
+    await delay(NEXT_PAGE_DELAY);
+    return {
+      success: true,
+      advanced: false,
+      legacyFallback: true
+    };
+  }
 }
 
 // 开始阅卷
