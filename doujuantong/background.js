@@ -50,6 +50,8 @@ const MAX_COMM_RETRIES = 30;
 const RECOVER_STALE_ACTIVE_MS = 30 * 60 * 1000;
 const DOUBAO_API_KEY_STORAGE_KEY = 'doubaoApiKey';
 const DEFAULT_DOUBAO_API_KEY = 'fe53fa2f-888e-46ca-b316-0f26a9d6c217';
+const ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
+const DOUBAO_MODEL = 'doubao-seed-2-0-mini-260428';
 
 // ============ 工具函数 ============
 
@@ -485,24 +487,30 @@ async function callDoubaoAPI(prompt, imageUrl) {
 
     log(`AI请求图片大小约 ${Math.round((imageUrl.length * 0.75) / 1024)}KB`);
 
-    const result = await fetchJsonWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+    const result = await fetchJsonWithTimeout(`${ARK_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'doubao-seed-1-6-250615',
+        model: DOUBAO_MODEL,
         temperature: 0,
         max_tokens: 300,
-        thinking: { type: 'disabled' },
+        reasoning_effort: 'minimal',
         messages: [
           {
+            role: 'user',
             content: [
-              { text: scoringPrompt, type: 'text' },
-              { image_url: { url: imageUrl }, type: 'image_url' }
-            ],
-            role: 'user'
+              { type: 'text', text: scoringPrompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageUrl,
+                  detail: 'low'
+                }
+              }
+            ]
           }
         ]
       })
